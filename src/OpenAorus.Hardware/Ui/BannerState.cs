@@ -7,22 +7,26 @@ public enum BannerKind { None, Info, Warning, Error }
 /// <summary>
 /// Owns the single owner-facing banner shown above the fan/sensor UI.
 ///
-/// Rules, in priority order:
-/// - An <see cref="ProfileStatus.Unknown"/> model's read-only banner is permanent: nothing ever changes it.
-/// - A reported failure (<see cref="ReportFailure"/>) persists until something explicitly supersedes it -
-///   a later successful hardware action (<see cref="ReportSuccess"/>) or another failure - never a sensor
-///   read on its own, transient or not.
-/// - A sensor error may only be cleared by a later successful sensor read, and only reverts to the
-///   model's baseline state (an <see cref="ProfileStatus.Untested"/> model's warning, or nothing for a
-///   tested model) - it never overwrites something already showing (a baseline warning, an active
-///   failure, or another sensor error).
+/// Every change to the banner comes from one of three sources, tracked internally so later reports know
+/// what they are and are not allowed to overwrite:
+/// - Baseline: the model's own status (an <see cref="ProfileStatus.Untested"/> warning, an
+///   <see cref="ProfileStatus.Unknown"/> read-only error, or nothing for a tested model).
+/// - Sensor: raised by <see cref="ReportSensorResult"/> when a poll fails. Cleared only by a later
+///   successful sensor read - nothing else touches it, and it never overwrites something already showing.
+/// - Explicit: raised by <see cref="ReportFailure"/> or <see cref="ReportNotice"/> - a caller-reported
+///   failure or message. Persists until superseded by another explicit report or by
+///   <see cref="ReportSuccess"/>; a successful sensor read never clears it.
+///
+/// An <see cref="ProfileStatus.Unknown"/> model's banner is permanent: no method here ever changes it.
 /// </summary>
 public sealed class BannerState
 {
+    private enum Source { Baseline, Sensor, Explicit }
+
     private readonly ProfileStatus _status;
     private readonly BannerKind _baselineKind;
     private readonly string _baselineText;
-    private bool _sensorErrorActive;
+    private Source _source = Source.Baseline;
 
     public BannerKind Kind { get; private set; }
     public string Text { get; private set; }
@@ -49,39 +53,49 @@ public sealed class BannerState
 
         if (!ok)
         {
-            if (Kind == BannerKind.None)
+            if (_source == Source.Baseline && Kind == BannerKind.None)
             {
                 Kind = BannerKind.Error;
                 Text = error ?? "sensor read failed";
-                _sensorErrorActive = true;
+                _source = Source.Sensor;
             }
-            // Otherwise something is already showing (a baseline warning, an active failure, or an
-            // existing sensor error) - leave it alone rather than fighting it.
+            // Otherwise something is already showing (a baseline warning, an explicit failure/notice, or
+            // an existing sensor error) - leave it alone rather than fighting it.
         }
-        else if (_sensorErrorActive)
+        else if (_source == Source.Sensor)
         {
-            _sensorErrorActive = false;
+            _source = Source.Baseline;
             RevertToBaseline();
         }
     }
 
     /// <summary>Report a failure (e.g. a fan-mode write) that must persist until explicitly superseded.</summary>
-    public void ReportFailure(string error)
+    public void ReportFailure(string error) => ReportNotice(BannerKind.Error, error);
+
+    /// <summary>
+    /// Report a caller-supplied banner message (e.g. curve validation, a battery-limit failure). Persists
+    /// with the same rules as <see cref="ReportFailure"/>: it stays until another explicit report or a
+    /// <see cref="ReportSuccess"/> supersedes it, and a successful sensor read never clears it.
+    /// </summary>
+    public void ReportNotice(BannerKind kind, string text)
     {
         if (_status == ProfileStatus.Unknown) return;
 
-        _sensorErrorActive = false;
-        Kind = BannerKind.Error;
-        Text = error;
+        Kind = kind;
+        Text = text;
+        _source = Source.Explicit;
     }
 
-    /// <summary>Report a successful hardware action, clearing any active error back to the baseline.</summary>
+    /// <summary>
+    /// Report a successful hardware action. Clears only a banner it is entitled to supersede - a
+    /// previously reported failure or notice - and leaves an active sensor error or the baseline alone.
+    /// </summary>
     public void ReportSuccess()
     {
         if (_status == ProfileStatus.Unknown) return;
-        if (Kind != BannerKind.Error) return;
+        if (_source != Source.Explicit) return;
 
-        _sensorErrorActive = false;
+        _source = Source.Baseline;
         RevertToBaseline();
     }
 

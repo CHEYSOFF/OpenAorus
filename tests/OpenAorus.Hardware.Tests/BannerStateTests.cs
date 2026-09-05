@@ -72,15 +72,30 @@ public class BannerStateTests
     }
 
     [Fact]
-    public void Reported_failure_on_an_untested_model_is_not_cleared_by_a_later_successful_sensor_read()
+    public void ReportSuccess_leaves_an_active_sensor_error_in_place()
     {
-        var b = new BannerState(Untested());
-        b.ReportFailure("Startup apply failed: boom");
+        var b = new BannerState(Tested());
+        b.ReportSensorResult(ok: false, error: "sensor read failed");
 
-        b.ReportSensorResult(ok: true, error: null);
+        b.ReportSuccess();
 
         Assert.Equal(BannerKind.Error, b.Kind);
-        Assert.Equal("Startup apply failed: boom", b.Text);
+        Assert.Equal("sensor read failed", b.Text);
+    }
+
+    [Fact]
+    public void Notice_survives_a_successful_sensor_read_and_is_replaced_by_a_later_failure()
+    {
+        var b = new BannerState(Tested());
+        b.ReportNotice(BannerKind.Info, "curve saved");
+
+        b.ReportSensorResult(ok: true, error: null);
+        Assert.Equal(BannerKind.Info, b.Kind);
+        Assert.Equal("curve saved", b.Text);
+
+        b.ReportFailure("apply failed");
+        Assert.Equal(BannerKind.Error, b.Kind);
+        Assert.Equal("apply failed", b.Text);
     }
 
     [Fact]

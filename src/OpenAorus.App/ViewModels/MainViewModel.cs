@@ -131,8 +131,14 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex) { _bannerState.ReportFailure($"Export failed: {ex.Message}"); SyncBanner(); }
     }
 
-    /// <summary>Thin wrapper kept for call sites (later tasks) that want to set the banner directly.</summary>
-    public void SetBanner(BannerKind kind, string text) { Banner = kind; BannerText = text; }
+    /// <summary>Thin wrapper over <see cref="BannerState.ReportNotice"/> for call sites (later tasks) that
+    /// want to set the banner directly - routed through <see cref="_bannerState"/> so the message sticks
+    /// instead of being overwritten by the next sensor tick.</summary>
+    public void SetBanner(BannerKind kind, string text)
+    {
+        _bannerState.ReportNotice(kind, text);
+        SyncBanner();
+    }
 
     /// <summary>Thin wrapper over <see cref="BannerState.ReportSuccess"/> for call sites that just want
     /// to clear whatever error is currently showing back to the model's baseline state.</summary>
