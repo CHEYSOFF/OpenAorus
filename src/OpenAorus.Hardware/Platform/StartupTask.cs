@@ -32,9 +32,16 @@ public static class StartupTask
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true,
             };
-            using var p = Process.Start(psi)!;
+            using var p = Process.Start(psi);
+            if (p is null) return -1;
+
             p.StandardOutput.ReadToEnd();
-            p.WaitForExit(15000);
+            p.StandardError.ReadToEnd();
+            if (!p.WaitForExit(15000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch (Exception) { }
+                return -1;
+            }
             return p.ExitCode;
         }
         catch (Exception) { return -1; }

@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using OpenAorus.Hardware.Platform;
 
 namespace OpenAorus.Hardware.Tests;
@@ -7,6 +8,7 @@ public sealed class FakeGccSystem : IGccSystem
     public HashSet<string> Tasks { get; } = new() { "GCC" };
     public HashSet<string> DisabledTasks { get; } = new();
     public Dictionary<string, string> RunValues { get; } = new() { ["AorusFusion"] = @"C:\Program Files\ControlCenter\FusionStartUp.exe" };
+    public Dictionary<string, RegistryValueKind> RunValueKinds { get; } = new() { ["AorusFusion"] = RegistryValueKind.ExpandString };
     public HashSet<string> Services { get; } = new() { "SMV4_Service" };
     public HashSet<string> DisabledServices { get; } = new();
     public HashSet<string> Running { get; } = new() { "GCC", "FusionStation" };
@@ -17,8 +19,9 @@ public sealed class FakeGccSystem : IGccSystem
     public bool DisableTask(string name) { Log.Add($"disable-task {name}"); return DisabledTasks.Add(name); }
     public bool EnableTask(string name) { Log.Add($"enable-task {name}"); return DisabledTasks.Remove(name); }
     public string? ReadRunValue(string name) => RunValues.GetValueOrDefault(name);
-    public void DeleteRunValue(string name) { Log.Add($"delete-run {name}"); RunValues.Remove(name); }
-    public void WriteRunValue(string name, string value) { Log.Add($"write-run {name}"); RunValues[name] = value; }
+    public RegistryValueKind ReadRunValueKind(string name) => RunValueKinds.GetValueOrDefault(name, RegistryValueKind.String);
+    public void DeleteRunValue(string name) { Log.Add($"delete-run {name}"); RunValues.Remove(name); RunValueKinds.Remove(name); }
+    public void WriteRunValue(string name, string value, RegistryValueKind kind) { Log.Add($"write-run {name}"); RunValues[name] = value; RunValueKinds[name] = kind; }
     public bool ServiceExists(string name) => Services.Contains(name);
     public bool StopAndDisableService(string name) { Log.Add($"disable-service {name}"); return DisabledServices.Add(name); }
     public bool EnableService(string name) { Log.Add($"enable-service {name}"); return DisabledServices.Remove(name); }
@@ -88,5 +91,51 @@ public class GccTakeoverTests
         Assert.True(GccTakeover.IsGccActive(sys));   // processes still running
         sys.Running.Clear();
         Assert.False(GccTakeover.IsGccActive(sys));
+    }
+
+    [Fact]
+    public void TakeOver_does_not_record_items_the_owner_already_disabled()
+    {
+        var sys = new FakeGccSystem();
+        sys.DisabledTasks.Add("GCC");
+        sys.DisabledServices.Add("SMV4_Service");
+        sys.RunValues.Clear(); // isolate this test to the task/service bookkeeping under review
+
+        var state = GccTakeover.TakeOver(sys);
+
+        Assert.False(state.TaskDisabled);
+        Assert.False(state.ServiceDisabled);
+
+        sys.Log.Clear();
+        GccTakeover.Restore(sys, state);
+
+        // Restore must not touch what it didn't record as changed: the owner's own choice stays untouched.
+        Assert.Empty(sys.Log);
+        Assert.Contains("GCC", sys.DisabledTasks);
+        Assert.Contains("SMV4_Service", sys.DisabledServices);
+    }
+
+    [Fact]
+    public void Restore_writes_back_the_original_registry_value_kind()
+    {
+        var sys = new FakeGccSystem();
+        sys.RunValueKinds["AorusFusion"] = RegistryValueKind.ExpandString;
+
+        var state = GccTakeover.TakeOver(sys);
+        Assert.Equal(RegistryValueKind.ExpandString, state.RunValueKind);
+
+        GccTakeover.Restore(sys, state);
+        Assert.Equal(RegistryValueKind.ExpandString, sys.RunValueKinds["AorusFusion"]);
+    }
+
+    [Fact]
+    public void Restore_defaults_to_string_kind_when_state_has_none_recorded()
+    {
+        var sys = new FakeGccSystem();
+        var state = new GccTakeoverState { RunValue = @"C:\Program Files\ControlCenter\FusionStartUp.exe" };
+
+        GccTakeover.Restore(sys, state);
+
+        Assert.Equal(RegistryValueKind.String, sys.RunValueKinds["AorusFusion"]);
     }
 }

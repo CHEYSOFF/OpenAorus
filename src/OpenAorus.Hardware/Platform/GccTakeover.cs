@@ -1,9 +1,14 @@
+using Microsoft.Win32;
+
 namespace OpenAorus.Hardware.Platform;
 
 public sealed class GccTakeoverState
 {
     public bool TaskDisabled { get; set; }
     public string? RunValue { get; set; }
+
+    /// <summary>Registry kind the run value had before it was removed. Null in state produced by an older settings file; Restore then defaults to String.</summary>
+    public RegistryValueKind? RunValueKind { get; set; }
     public bool ServiceDisabled { get; set; }
     public DateTime When { get; set; } = DateTime.Now;
 }
@@ -30,6 +35,7 @@ public static class GccTakeover
         var run = sys.ReadRunValue(RunValueName);
         if (run is not null)
         {
+            state.RunValueKind = sys.ReadRunValueKind(RunValueName);
             sys.DeleteRunValue(RunValueName);
             state.RunValue = run;
         }
@@ -44,7 +50,7 @@ public static class GccTakeover
     public static void Restore(IGccSystem sys, GccTakeoverState state)
     {
         if (state.TaskDisabled) sys.EnableTask(TaskName);
-        if (state.RunValue is not null) sys.WriteRunValue(RunValueName, state.RunValue);
+        if (state.RunValue is not null) sys.WriteRunValue(RunValueName, state.RunValue, state.RunValueKind ?? RegistryValueKind.String);
         if (state.ServiceDisabled) sys.EnableService(ServiceName);
     }
 

@@ -8,25 +8,42 @@ public sealed class WindowsGccSystem : IGccSystem
 {
     private const string RunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
 
+    /// <summary>Runs a child process with a bounded wait. Never throws: a start failure, a timeout (the child
+    /// is then killed) or any other error all come back as a failed (-1) result rather than escaping the seam.</summary>
     private static (int code, string output) Run(string file, string args)
     {
-        var psi = new ProcessStartInfo(file, args)
+        try
         {
-            UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true,
-        };
-        using var p = Process.Start(psi)!;
-        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-        p.WaitForExit(15000);
-        return (p.ExitCode, output);
+            var psi = new ProcessStartInfo(file, args)
+            {
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true,
+            };
+            using var p = Process.Start(psi);
+            if (p is null) return (-1, string.Empty);
+
+            var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            if (!p.WaitForExit(15000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch (Exception) { }
+                return (-1, output);
+            }
+            return (p.ExitCode, output);
+        }
+        catch (Exception)
+        {
+            return (-1, string.Empty);
+        }
     }
 
     public bool TaskExists(string name) => Run("schtasks", $"/Query /TN \"{name}\"").code == 0;
 
     public bool IsTaskEnabled(string name)
     {
-        var (code, output) = Run("schtasks", $"/Query /TN \"{name}\" /FO LIST /V");
-        return code == 0 && !output.Contains("Disabled", StringComparison.OrdinalIgnoreCase);
+        // XML output carries an unlocalized <Enabled>true|false</Enabled> element; the plain-text /FO LIST /V
+        // output is localized (e.g. the word "Disabled" is translated), which would misreport on non-English Windows.
+        var (code, output) = Run("schtasks", $"/Query /TN \"{name}\" /XML");
+        return code == 0 && !output.Contains("<Enabled>false</Enabled>", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool DisableTask(string name)
@@ -40,7 +57,16 @@ public sealed class WindowsGccSystem : IGccSystem
     public string? ReadRunValue(string name)
     {
         using var key = Registry.LocalMachine.OpenSubKey(RunKey, writable: false);
-        return key?.GetValue(name)?.ToString();
+        // DoNotExpandEnvironmentNames: a REG_EXPAND_SZ value must round-trip verbatim, not with %VARS% expanded.
+        return key?.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames)?.ToString();
+    }
+
+    public RegistryValueKind ReadRunValueKind(string name)
+    {
+        using var key = Registry.LocalMachine.OpenSubKey(RunKey, writable: false);
+        if (key is null) return RegistryValueKind.String;
+        try { return key.GetValueKind(name); }
+        catch (Exception) { return RegistryValueKind.String; }
     }
 
     public void DeleteRunValue(string name)
@@ -49,10 +75,10 @@ public sealed class WindowsGccSystem : IGccSystem
         key?.DeleteValue(name, throwOnMissingValue: false);
     }
 
-    public void WriteRunValue(string name, string value)
+    public void WriteRunValue(string name, string value, RegistryValueKind kind)
     {
         using var key = Registry.LocalMachine.CreateSubKey(RunKey, writable: true);
-        key.SetValue(name, value, RegistryValueKind.String);
+        key.SetValue(name, value, kind);
     }
 
     public bool ServiceExists(string name) =>
@@ -95,6 +121,20 @@ public sealed class WindowsGccSystem : IGccSystem
         return killed;
     }
 
-    public bool AnyProcessRunning(IEnumerable<string> names) =>
-        names.Any(n => Process.GetProcessesByName(n).Length > 0);
+    public bool AnyProcessRunning(IEnumerable<string> names)
+    {
+        foreach (var n in names)
+        {
+            var procs = Process.GetProcessesByName(n);
+            try
+            {
+                if (procs.Length > 0) return true;
+            }
+            finally
+            {
+                foreach (var p in procs) p.Dispose();
+            }
+        }
+        return false;
+    }
 }
