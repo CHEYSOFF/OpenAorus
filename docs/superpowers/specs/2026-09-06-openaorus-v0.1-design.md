@@ -81,7 +81,7 @@ GCC does.
 | Custom | 0 | 1 | 0 | 0 | `SetFanIndexValue(i, temp_i, duty_i)` for each point, then a `(0,0)` terminator if fewer than 15 |
 
 Order for Turbo/Fixed: step0 → Auto=0 → NvThermalTarget=0 → duties → Step=1 → Fixed=1.
-Order for Custom: step0 → Fixed=0 → Auto=0 → NvThermalTarget=0 → points → Step=1.
+Order for Custom: step0 → Fixed=0 → Auto=0 → NvThermalTarget=0 → Step=1 → points → (0,0) terminator if fewer than 15 (GCC applyFANprofile method 4 order).
 
 ### 2.3 Battery
 
