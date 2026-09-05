@@ -52,15 +52,29 @@ public partial class App : System.Windows.Application
                 return;
             }
 
-            // Task 14 replaces this with tray + window startup.
-            System.Windows.MessageBox.Show($"OpenAorus {Services.Version} on {Services.Profile.Name} ({Services.Profile.Status}). UI arrives in Task 14.", "OpenAorus");
-            Shutdown(0);
+            var vm = new ViewModels.MainViewModel(Services);
+            _window = new Views.MainWindow(vm);
+            _tray = new TrayIcon(vm, () => _window.ToggleVisibility(), () => Shutdown(0));
+            if (!StartHidden) _window.ToggleVisibility();
+            await vm.InitializeAsync();
+            _vm = vm;
         }
         catch (Exception ex)
         {
             ShowFatalError(ex);
             Shutdown(1);
         }
+    }
+
+    private Views.MainWindow? _window;
+    private TrayIcon? _tray;
+    private ViewModels.MainViewModel? _vm;
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _vm?.Shutdown();
+        _tray?.Dispose();
+        base.OnExit(e);
     }
 
     /// <summary>Backstop for exceptions raised after OnStartup returns (e.g. once the tray icon exists) so a
