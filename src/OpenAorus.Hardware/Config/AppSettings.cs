@@ -12,6 +12,7 @@ public sealed class AppSettings
     public int PollIntervalVisibleMs { get; set; } = 1000;
     public int PollIntervalHiddenMs { get; set; } = 5000;
     public bool StartWithWindows { get; set; }
+    public OpenAorus.Hardware.Platform.GccTakeoverState? Takeover { get; set; }
 
     public FanCurve ToCurve() => new(Curve);
 }
