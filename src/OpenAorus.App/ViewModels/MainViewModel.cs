@@ -2,17 +2,16 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using OpenAorus.Hardware.Fans;
-using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Sensors;
+using OpenAorus.Hardware.Ui;
 
 namespace OpenAorus.App.ViewModels;
-
-public enum BannerKind { None, Info, Warning, Error }
 
 public partial class MainViewModel : ObservableObject
 {
     private readonly AppServices _s;
     private readonly SensorPoller _poller;
+    private readonly BannerState _bannerState;
 
     [ObservableProperty] private FanMode _selectedMode;
     [ObservableProperty] private int _fixedPercent;
@@ -35,18 +34,8 @@ public partial class MainViewModel : ObservableObject
         _poller = new SensorPoller(_s.Sensors, _s.Settings.PollIntervalHiddenMs);
         _poller.Updated += OnSensors;
 
-        Banner = _s.Profile.Status switch
-        {
-            ProfileStatus.Unknown => BannerKind.Error,
-            ProfileStatus.Untested => BannerKind.Warning,
-            _ => BannerKind.None,
-        };
-        BannerText = _s.Profile.Status switch
-        {
-            ProfileStatus.Unknown => $"'{_s.Profile.Name}' is not a recognised Gigabyte laptop. Read-only mode. Export diagnostics and open an issue.",
-            ProfileStatus.Untested => "Untested model - compare fan duty read-back with Gigabyte Control Center before trusting it.",
-            _ => "",
-        };
+        _bannerState = new BannerState(_s.Profile);
+        SyncBanner();
     }
 
     public async Task InitializeAsync()
@@ -57,7 +46,7 @@ public partial class MainViewModel : ObservableObject
         {
             var r = await _s.ApplySavedAsync();
             StatusLine = r.Success ? $"Applied {SelectedMode} at startup" : $"Startup apply failed: {r.Error}";
-            if (!r.Success) SetBanner(BannerKind.Error, r.Error!);
+            if (!r.Success) { _bannerState.ReportFailure(r.Error!); SyncBanner(); }
         }
     }
 
@@ -73,16 +62,24 @@ public partial class MainViewModel : ObservableObject
     private void OnSensors(SensorSnapshot snap)
     {
         Sensors = snap;
-        if (!snap.Ok && Banner == BannerKind.None) SetBanner(BannerKind.Error, snap.Error ?? "sensor read failed");
-        else if (snap.Ok && Banner == BannerKind.Error && _s.Profile.Status != ProfileStatus.Unknown) ClearBanner();
+        _bannerState.ReportSensorResult(snap.Ok, snap.Error);
+        SyncBanner();
     }
 
     private async void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
-        if (e.Mode != PowerModes.Resume || !CanWrite) return;
-        await Task.Delay(3000); // let the EC and WMI provider wake up
-        var r = await _s.ApplySavedAsync();
-        StatusLine = r.Success ? $"Re-applied {SelectedMode} after resume" : $"Resume apply failed: {r.Error}";
+        // IsBusy also guards against a mode click landing during the delay below, and against Windows
+        // firing PowerModes.Resume twice for a single wake - both would otherwise race a second write
+        // sequence against the controller alongside this one.
+        if (e.Mode != PowerModes.Resume || !CanWrite || IsBusy) return;
+        IsBusy = true;
+        try
+        {
+            await Task.Delay(3000); // let the EC and WMI provider wake up
+            var r = await _s.ApplySavedAsync();
+            StatusLine = r.Success ? $"Re-applied {SelectedMode} after resume" : $"Resume apply failed: {r.Error}";
+        }
+        finally { IsBusy = false; }
     }
 
     [RelayCommand]
@@ -99,12 +96,14 @@ public partial class MainViewModel : ObservableObject
                 _s.Settings.Mode = mode;
                 _s.Store.Save(_s.Settings);
                 StatusLine = $"{mode} applied";
-                if (Banner == BannerKind.Error) ClearBanner();
+                _bannerState.ReportSuccess();
+                SyncBanner();
             }
             else
             {
                 StatusLine = $"{mode} failed";
-                SetBanner(BannerKind.Error, r.Error!);
+                _bannerState.ReportFailure(r.Error!);
+                SyncBanner();
             }
         }
         finally { IsBusy = false; }
@@ -129,15 +128,24 @@ public partial class MainViewModel : ObservableObject
             StatusLine = $"Diagnostics saved to {path}";
             System.Windows.Clipboard.SetText(path);
         }
-        catch (Exception ex) { SetBanner(BannerKind.Error, $"Export failed: {ex.Message}"); }
+        catch (Exception ex) { _bannerState.ReportFailure($"Export failed: {ex.Message}"); SyncBanner(); }
     }
 
+    /// <summary>Thin wrapper kept for call sites (later tasks) that want to set the banner directly.</summary>
     public void SetBanner(BannerKind kind, string text) { Banner = kind; BannerText = text; }
 
+    /// <summary>Thin wrapper over <see cref="BannerState.ReportSuccess"/> for call sites that just want
+    /// to clear whatever error is currently showing back to the model's baseline state.</summary>
     public void ClearBanner()
     {
-        Banner = _s.Profile.Status == ProfileStatus.Untested ? BannerKind.Warning : BannerKind.None;
-        BannerText = Banner == BannerKind.Warning ? "Untested model - compare fan duty read-back with Gigabyte Control Center before trusting it." : "";
+        _bannerState.ReportSuccess();
+        SyncBanner();
+    }
+
+    private void SyncBanner()
+    {
+        Banner = _bannerState.Kind;
+        BannerText = _bannerState.Text;
     }
 
     public string TrayTooltip => Sensors.Ok
