@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 using OpenAorus.Hardware.Platform;
 
 namespace OpenAorus.App;
@@ -9,43 +10,78 @@ public partial class App : System.Windows.Application
     public static AppServices Services { get; private set; } = null!;
     public static bool StartHidden { get; private set; }
 
+    public App()
+    {
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
-        base.OnStartup(e);
-        var args = e.Args.Select(a => a.ToLowerInvariant()).ToArray();
-        StartHidden = args.Contains("--tray");
-
-        if (!Elevation.IsElevated())
+        try
         {
-            var exe = Environment.ProcessPath!;
-            if (!Elevation.RelaunchElevated(exe, e.Args))
-                System.Windows.MessageBox.Show("OpenAorus needs administrator rights to talk to the embedded controller.",
-                    "OpenAorus", MessageBoxButton.OK, MessageBoxImage.Warning);
-            Shutdown(1);
-            return;
-        }
+            base.OnStartup(e);
+            var args = e.Args.Select(a => a.ToLowerInvariant()).ToArray();
+            StartHidden = args.Contains("--tray");
 
-        Services = AppServices.Create();
+            if (!Elevation.IsElevated())
+            {
+                var exe = Environment.ProcessPath!;
+                if (!Elevation.RelaunchElevated(exe, e.Args))
+                    System.Windows.MessageBox.Show("OpenAorus needs administrator rights to talk to the embedded controller.",
+                        "OpenAorus", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Shutdown(1);
+                return;
+            }
 
-        if (args.Contains("--dump"))
-        {
-            var attached = ConsoleAttach.TryAttach();
-            var path = Services.WriteDiagnostics();
-            if (attached) Console.WriteLine(File.ReadAllText(path));
-            else System.Windows.MessageBox.Show($"Diagnostics written to:\n{path}", "OpenAorus");
+            Services = AppServices.Create();
+
+            if (args.Contains("--dump"))
+            {
+                var attached = ConsoleAttach.TryAttach();
+                var path = Services.WriteDiagnostics();
+                if (attached) Console.WriteLine(File.ReadAllText(path));
+                else System.Windows.MessageBox.Show($"Diagnostics written to:\n{path}", "OpenAorus");
+                Shutdown(0);
+                return;
+            }
+
+            if (args.Contains("--apply"))
+            {
+                var r = await Services.ApplySavedAsync();
+                Shutdown(r.Success ? 0 : 1);
+                return;
+            }
+
+            // Task 14 replaces this with tray + window startup.
+            System.Windows.MessageBox.Show($"OpenAorus {Services.Version} on {Services.Profile.Name} ({Services.Profile.Status}). UI arrives in Task 14.", "OpenAorus");
             Shutdown(0);
-            return;
         }
-
-        if (args.Contains("--apply"))
+        catch (Exception ex)
         {
-            var r = await Services.ApplySavedAsync();
-            Shutdown(r.Success ? 0 : 1);
-            return;
+            ShowFatalError(ex);
+            Shutdown(1);
         }
+    }
 
-        // Task 14 replaces this with tray + window startup.
-        System.Windows.MessageBox.Show($"OpenAorus {Services.Version} on {Services.Profile.Name} ({Services.Profile.Status}). UI arrives in Task 14.", "OpenAorus");
-        Shutdown(0);
+    /// <summary>Backstop for exceptions raised after OnStartup returns (e.g. once the tray icon exists) so a
+    /// later fault surfaces to the owner instead of the process silently disappearing.</summary>
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        ShowFatalError(e.Exception);
+        e.Handled = true;
+        Shutdown(1);
+    }
+
+    private static void ShowFatalError(Exception ex)
+    {
+        string? diagnosticsPath = null;
+        try { diagnosticsPath = Services is not null ? Services.WriteDiagnostics() : null; }
+        catch (Exception) { }
+
+        var message = $"{ex.GetType().Name}: {ex.Message}";
+        if (diagnosticsPath is not null)
+            message += $"\n\nDiagnostics written to:\n{diagnosticsPath}";
+
+        System.Windows.MessageBox.Show(message, "OpenAorus", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }
