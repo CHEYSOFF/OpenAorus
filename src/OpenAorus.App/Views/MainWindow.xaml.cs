@@ -13,6 +13,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
+        ContextHost.Content = new ContextPanel { DataContext = vm };
         IsVisibleChanged += (_, _) => _vm.IsWindowVisible = IsVisible;
     }
 

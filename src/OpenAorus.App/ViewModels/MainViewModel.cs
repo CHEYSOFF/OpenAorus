@@ -25,6 +25,7 @@ public partial class MainViewModel : ObservableObject
     public bool CanWrite => _s.Profile.CanWrite;
     public string ModelLine => $"{_s.Profile.Name} · {_s.Profile.Status} · v{_s.Version}";
     public IReadOnlyList<FanMode> Modes { get; } = Enum.GetValues<FanMode>();
+    public CurveEditorViewModel Curve { get; }
 
     public MainViewModel(AppServices services)
     {
@@ -33,6 +34,7 @@ public partial class MainViewModel : ObservableObject
         _fixedPercent = _s.Settings.FixedPercent;
         _poller = new SensorPoller(_s.Sensors, _s.Settings.PollIntervalHiddenMs);
         _poller.Updated += OnSensors;
+        Curve = new CurveEditorViewModel(_s.Settings.Curve);
 
         _bannerState = new BannerState(_s.Profile);
         SyncBanner();
@@ -117,7 +119,12 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ApplyCurveAsync() => await SelectModeAsync(FanMode.Custom);
+    private async Task ApplyCurveAsync()
+    {
+        if (!Curve.IsValid) { SetBanner(BannerKind.Warning, Curve.ValidationText); return; }
+        _s.Settings.Curve = Curve.ToCurve().Points.ToList();
+        await SelectModeAsync(FanMode.Custom);
+    }
 
     [RelayCommand]
     private void ExportDiagnostics()
