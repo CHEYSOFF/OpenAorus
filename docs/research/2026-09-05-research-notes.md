@@ -2,7 +2,7 @@
 
 ## Machine
 - GIGABYTE AORUS 17G KD, BIOS FB07 (2021-10), i7-11800H, RTX 3060 Laptop, Win11 26200
-- User account is admin-with-UAC (GCC task runs as slobb RunLevel=Highest); Claude shell is unelevated
+- User account is admin-with-UAC (GCC task runs with RunLevel=Highest); automated tooling here runs unelevated
 - Installed: GCC 25.12.10.01 (C:\Program Files\GIGABYTE\Control Center, .NET Fx 4.7.2, WPF+WebView2)
   + legacy "Control Center 25.11.12.01" (C:\Program Files\ControlCenter) with SMV4_Service (LocalSystem), FusionStation/FusionShortcut/OSDwindow
 - Intel XTU 7.14 installed
@@ -54,6 +54,6 @@ Primitives (GB_WMIACPI_Set): SetCurrentFanStep(0), SetFixedFanStatus(0/1), SetSt
 - Method IDs mostly stable across generations; per-model quirks: duty max 229 vs 100, TPP, fan count 2-4, keyboard type (Ione per-key, ITE, Compal 1-zone)
 
 ## Reddit
-- reddit blocked from WebFetch/Playwright/jina; Chrome extension not connected. Need user to open r/gigabyte, r/GigabyteGaming, r/AORUS, r/GamingLaptops rules pages, or connect Claude-in-Chrome.
+- reddit.com blocks scripted fetches; subreddit rules for r/gigabyte, r/GigabyteGaming, r/AORUS, r/GamingLaptops still need reading by hand before posting.
 - Indirect signals: notebookcheck calls GCC "pixelated and unattractive"; alternativeto lists only OpenRGB; Steam/Tom's threads: "jet engine fans", "doesn't remember settings", "bloatware"
 
