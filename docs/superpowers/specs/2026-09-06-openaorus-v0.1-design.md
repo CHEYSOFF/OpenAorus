@@ -193,8 +193,8 @@ Tray: left-click toggles the window; right-click menu has the six modes,
   for both profiles; curve validation cases; RPM byte swap; settings
   round-trip; takeover restore bookkeeping (pure logic part).
 - Manual: owner runs each build elevated on the 17G KD; `--dump` output is
-  attached to bug reports. The assistant's shell cannot elevate, so every
-  hardware claim is verified by the owner, not by the assistant.
+  attached to bug reports. Every hardware claim is verified by the owner on real
+  hardware, never inferred from unelevated tooling.
 
 ## 8. Packaging and release
 

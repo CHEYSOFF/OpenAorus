@@ -19,8 +19,7 @@
 - 500 ms pause between consecutive writes inside one fan-mode sequence (GCC does this).
 - v0.1 never calls light-bar, RGB, `SetNvPowerConfig`, `SetPEG2orSG2`, `SetAIBoostStatus`, `SetDynamicBoostStatus`, `SetTppStatus` or any keyboard HID path.
 - Settings live in `%LOCALAPPDATA%\OpenAorus\settings.json`.
-- Every commit message ends with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` (repo convention).
-- **The assistant's shell cannot elevate.** Any step marked `OWNER VERIFY` must be run by the repo owner in an elevated session; the executor must stop and ask, not fake the result.
+- **Steps marked `OWNER VERIFY` must be run by the repo owner in an elevated session.** Automated tooling here runs unelevated and cannot reach the embedded controller; never fake or assume such a result — stop and hand the step to the owner.
 - Run tests with `dotnet test OpenAorus.sln` from the repo root; build with `dotnet build OpenAorus.sln -c Release`.
 
 ## File Structure
@@ -182,9 +181,7 @@ Expected: build succeeds (WPF template's `MainWindow` still present, fine for no
 
 ```bash
 git add -A
-git commit -m "Scaffold solution: Hardware lib, WPF app, xunit tests
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Scaffold solution: Hardware lib, WPF app, xunit tests"
 ```
 
 ---
@@ -426,9 +423,7 @@ Expected: 5 passed.
 
 ```bash
 git add -A
-git commit -m "Add IGigabyteWmi seam, WmiResult, System.Management client and test fake
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add IGigabyteWmi seam, WmiResult, System.Management client and test fake"
 ```
 
 ---
@@ -582,9 +577,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add ModelProfile detection and duty/percent scaling
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add ModelProfile detection and duty/percent scaling"
 ```
 
 ---
@@ -741,9 +734,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add FanMode and FanCurve with validation
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add FanMode and FanCurve with validation"
 ```
 
 ---
@@ -1092,9 +1083,7 @@ with
 
 ```bash
 git add -A
-git commit -m "Add FanController with GCC-exact mode sequences
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add FanController with GCC-exact mode sequences"
 ```
 
 ---
@@ -1266,9 +1255,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add SensorReader for temps, RPM and duty
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add SensorReader for temps, RPM and duty"
 ```
 
 ---
@@ -1449,9 +1436,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add BatteryController (charge policy + stop)
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add BatteryController (charge policy + stop)"
 ```
 
 ---
@@ -1582,9 +1567,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add DiagnosticsDump over every argument-less Get method
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add DiagnosticsDump over every argument-less Get method"
 ```
 
 ---
@@ -1775,9 +1758,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add AppSettings and JSON SettingsStore
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add AppSettings and JSON SettingsStore"
 ```
 
 ---
@@ -2108,9 +2089,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add reversible GCC takeover with IGccSystem seam and Windows impl
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add reversible GCC takeover with IGccSystem seam and Windows impl"
 ```
 
 ---
@@ -2252,9 +2231,7 @@ Expected: all pass.
 
 ```bash
 git add -A
-git commit -m "Add StartupTask (schtasks logon task) and Elevation helpers
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add StartupTask (schtasks logon task) and Elevation helpers"
 ```
 
 ---
@@ -2471,9 +2448,7 @@ Expected: UAC is not prompted again (already elevated), and the output starts wi
 
 ```bash
 git add -A
-git commit -m "Add app bootstrap: elevation, composition root, --dump and --apply CLI modes
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add app bootstrap: elevation, composition root, --dump and --apply CLI modes"
 ```
 
 ---
@@ -2699,9 +2674,7 @@ Expected: succeeds. (`SystemEvents` lives in `Microsoft.Win32.SystemEvents`, shi
 
 ```bash
 git add -A
-git commit -m "Add MainViewModel with mode commands, sensor polling and resume re-apply
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add MainViewModel with mode commands, sensor polling and resume re-apply"
 ```
 
 ---
@@ -3147,9 +3120,7 @@ Owner runs `dotnet run --project src/OpenAorus.App -- --show` elevated. Expected
 
 ```bash
 git add -A
-git commit -m "Add dark theme, tray icon and main window with modes and live sensors
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add dark theme, tray icon and main window with modes and live sensors"
 ```
 
 ---
@@ -3497,9 +3468,7 @@ Owner: select **Fixed**, drag the slider to 30 % and release; fans settle lower 
 
 ```bash
 git add -A
-git commit -m "Add fixed-duty slider and draggable 15-point curve editor
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add fixed-duty slider and draggable 15-point curve editor"
 ```
 
 ---
@@ -3828,9 +3797,7 @@ Owner, elevated:
 
 ```bash
 git add -A
-git commit -m "Add battery limit card and settings window (startup task, GCC takeover)
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add battery limit card and settings window (startup task, GCC takeover)"
 ```
 
 ---
@@ -3937,9 +3904,7 @@ runs inside the embedded controller, so closing the app does not stop the fans.
 
 ```bash
 git add -A
-git commit -m "Add CI workflow, publish settings and install docs
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "Add CI workflow, publish settings and install docs"
 git tag v0.1.0-alpha.1
 git push && git push --tags
 ```

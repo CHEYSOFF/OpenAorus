@@ -57,5 +57,3 @@ Primitives (GB_WMIACPI_Set): SetCurrentFanStep(0), SetFixedFanStatus(0/1), SetSt
 - reddit blocked from WebFetch/Playwright/jina; Chrome extension not connected. Need user to open r/gigabyte, r/GigabyteGaming, r/AORUS, r/GamingLaptops rules pages, or connect Claude-in-Chrome.
 - Indirect signals: notebookcheck calls GCC "pixelated and unattractive"; alternativeto lists only OpenRGB; Steam/Tom's threads: "jet engine fans", "doesn't remember settings", "bloatware"
 
-## Toolchain on box
-dotnet 10 SDK, .NET 8/10 runtimes, VS2019, Rust 1.97, Node 24, Python 3.11, gh (CHEYSOFF), ilspycmd installed
