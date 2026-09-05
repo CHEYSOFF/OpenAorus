@@ -149,7 +149,10 @@ Rules:
   restores each item it recorded.
 - **Start with Windows:** creates/deletes logon task `OpenAorus` with
   `/RL HIGHEST` pointing at the current exe.
-- **Read-only mode (untested/unknown model):** sensors visible, all write
+- **Untested model (name matches AORUS/AERO/GIGABYTE, no tested profile):**
+  all controls enabled, persistent yellow banner "Untested model - compare with
+  GCC before trusting fan duties" plus an "Export diagnostics" button.
+- **Read-only mode (unknown model name):** sensors visible, all write
   controls disabled, banner with "Export diagnostics" writing
   `%LOCALAPPDATA%\OpenAorus\diagnostics-<model>.txt`.
 - **CLI:** `--dump` prints the diagnostics to stdout and exits (still needs
@@ -209,8 +212,8 @@ Tray: left-click toggles the window; right-click menu has the six modes,
   classes. v0.1 documents "keep GCC installed or install acpimof manually".
 - A GCC update may re-enable its task/service; takeover shows a warning if it
   detects GCC running again.
-- Untested models may use `DutyMax = 100` or lack `getGpuTemp1`; the generic
-  profile is read-only for writes only when detection fails, so a wrong
-  `DutyMax` on an untested model could under-drive fans. Mitigation: the
-  generic profile caps writes at 100 % of the assumed scale and the README
-  asks testers to compare with GCC first.
+- Untested models may use `DutyMax = 100` or lack `getGpuTemp1`. A wrong
+  `DutyMax` on an untested model could under-drive fans (writing 229 where the
+  EC expects 100 is clamped by firmware; writing 100 where it expects 229 gives
+  ~44 %). Mitigation: the untested banner, the README asking testers to compare
+  duty read-back with GCC first, and `--dump` output to build a real profile.
