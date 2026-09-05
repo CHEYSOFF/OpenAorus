@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Version>0.1.0</Version>
+    <Authors>OpenAorus contributors</Authors>
+    <RepositoryUrl>https://github.com/CHEYSOFF/OpenAorus</RepositoryUrl>
+  </PropertyGroup>
+</Project>
