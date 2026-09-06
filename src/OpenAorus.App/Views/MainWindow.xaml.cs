@@ -14,6 +14,7 @@ public partial class MainWindow : Window
         _vm = vm;
         DataContext = vm;
         ContextHost.Content = new ContextPanel { DataContext = vm };
+        BatteryHost.Content = new BatteryPanel { DataContext = vm.Battery };
         IsVisibleChanged += (_, _) => _vm.IsWindowVisible = IsVisible;
     }
 
@@ -40,8 +41,9 @@ public partial class MainWindow : Window
         Top = area.Bottom - Height - 12;
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e) =>
-        SettingsRequested?.Invoke();
-
-    public event Action? SettingsRequested; // wired in Task 16
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var w = new SettingsWindow(_vm.SettingsVm) { Owner = this };
+        w.ShowDialog();
+    }
 }

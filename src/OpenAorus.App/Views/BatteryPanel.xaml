@@ -1,0 +1,18 @@
+<UserControl x:Class="OpenAorus.App.Views.BatteryPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Style="{StaticResource CardStyle}" IsEnabled="{Binding CanWrite}">
+        <StackPanel>
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Muted}" Text="{Binding CycleCount, StringFormat={}{0} cycles}"/>
+                <CheckBox Content="Limit charge" IsChecked="{Binding LimitEnabled}" Checked="Limit_Changed" Unchecked="Limit_Changed"/>
+            </DockPanel>
+            <DockPanel Margin="0,6,0,0" IsEnabled="{Binding LimitEnabled}">
+                <TextBlock DockPanel.Dock="Right" Width="44" TextAlignment="Right" Text="{Binding StopPercent, StringFormat={}{0}%}"/>
+                <Slider Minimum="60" Maximum="100" TickFrequency="5" Value="{Binding StopPercent}"
+                        Thumb.DragCompleted="Stop_DragCompleted"/>
+            </DockPanel>
+            <TextBlock Style="{StaticResource Muted}" Text="{Binding StatusText}" Margin="0,4,0,0"/>
+        </StackPanel>
+    </Border>
+</UserControl>

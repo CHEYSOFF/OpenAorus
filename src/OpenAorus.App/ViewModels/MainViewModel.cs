@@ -26,6 +26,8 @@ public partial class MainViewModel : ObservableObject
     public string ModelLine => $"{_s.Profile.Name} · {_s.Profile.Status} · v{_s.Version}";
     public IReadOnlyList<FanMode> Modes { get; } = Enum.GetValues<FanMode>();
     public CurveEditorViewModel Curve { get; }
+    public BatteryViewModel Battery { get; }
+    public SettingsViewModel SettingsVm { get; }
 
     public MainViewModel(AppServices services)
     {
@@ -35,6 +37,8 @@ public partial class MainViewModel : ObservableObject
         _poller = new SensorPoller(_s.Sensors, _s.Settings.PollIntervalHiddenMs);
         _poller.Updated += OnSensors;
         Curve = new CurveEditorViewModel(_s.Settings.Curve);
+        Battery = new BatteryViewModel(_s, SetBanner);
+        SettingsVm = new SettingsViewModel(_s);
 
         _bannerState = new BannerState(_s.Profile);
         SyncBanner();
@@ -50,6 +54,8 @@ public partial class MainViewModel : ObservableObject
             StatusLine = r.Success ? $"Applied {SelectedMode} at startup" : $"Startup apply failed: {r.Error}";
             if (!r.Success) { _bannerState.ReportFailure(r.Error!); SyncBanner(); }
         }
+        await Battery.RefreshAsync();
+        await SettingsVm.RefreshAsync();
     }
 
     public void Shutdown()
