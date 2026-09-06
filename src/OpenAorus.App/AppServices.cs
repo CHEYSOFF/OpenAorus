@@ -56,7 +56,9 @@ public sealed class AppServices
             Lighting = new LightingController(keyboard, layout),
             KeyboardPresent = keyboard.IsPresent,
             Version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0",
-            ExePath = Environment.ProcessPath ?? Assembly.GetExecutingAssembly().Location,
+            // Not Assembly.Location: it is empty in a single-file build, which is exactly what
+            // CI publishes, and this path is what the logon task is registered against.
+            ExePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenAorus.exe"),
         };
     }
 

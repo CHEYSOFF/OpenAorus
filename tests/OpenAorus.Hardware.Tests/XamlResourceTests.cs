@@ -117,7 +117,9 @@ public class XamlResourceTests
         Assert.NotEmpty(keys);
 
         var theme = KeysDefinedIn(ThemeFile);
-        Assert.Empty(keys.Where(k => !theme.Contains(k)));
+        var missing = keys.Where(k => !theme.Contains(k)).ToList();
+
+        Assert.Empty(missing);
     }
 
     /// <summary>
