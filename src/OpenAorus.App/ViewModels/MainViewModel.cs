@@ -55,8 +55,9 @@ public partial class MainViewModel : ObservableObject
         else if (_s.Store.LastLoadRepaired)
         {
             // Same route as the reset notice above, and for the same reason: the owner's saved
-            // lighting changed without them asking. Only the settings the keyboard could not have
-            // accepted were replaced, so this says so rather than claiming a full reset.
+            // lighting changed without them asking. Only what the keyboard could not have accepted
+            // was touched -- clamped where a value had a sane nearest match, removed where it did
+            // not -- so this says both rather than claiming a full reset.
             _bannerState.ReportOverrideNotice(BannerKind.Warning,
                 "Some saved lighting settings were out of range and have been reset to defaults. " +
                 "Saved presets or per-key colours that could not be read were removed. " +
