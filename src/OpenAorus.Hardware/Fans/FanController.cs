@@ -82,7 +82,12 @@ public sealed class FanController
             case FanMode.Turbo:
             case FanMode.Fixed:
             {
-                var duty = mode == FanMode.Turbo ? (byte)_profile.DutyMax : _profile.ToDuty(fixedPercent);
+                // Fixed latches SetFixedFanStatus in the controller and ignores temperature for
+                // as long as it stays latched - through app exit and through a reboot - so the
+                // floor is applied here, where every caller passes, and not only at the slider.
+                var duty = mode == FanMode.Turbo
+                    ? (byte)_profile.DutyMax
+                    : _profile.ToDuty(FanSafety.ClampFixedPercent(fixedPercent));
                 s.Add(Step.Data("SetAutoFanStatus", 0));
                 s.Add(Step.Data("SetNvThermalTarget", 0));
                 s.Add(Step.Data("SetFixedFanSpeed", duty));

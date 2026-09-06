@@ -30,7 +30,9 @@ public class SettingsStoreTests : IDisposable
         var s = store.Load();
         s.Mode = FanMode.Custom;
         s.FixedPercent = 73;
-        s.Curve = new List<FanCurvePoint> { new(45, 20), new(85, 100) };
+        // Has to clear FanSafety now, or Load repairs it away and the round trip is not one.
+        // The old fixture ran 20 % at 80 °C.
+        s.Curve = new List<FanCurvePoint> { new(45, 20), new(80, 70), new(90, 100) };
         s.ChargeLimitEnabled = true;
         s.ChargeStopPercent = 60;
         s.StartWithWindows = true;

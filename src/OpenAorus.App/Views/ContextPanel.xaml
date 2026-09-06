@@ -13,18 +13,22 @@
         <!-- Fixed -->
         <StackPanel Visibility="{Binding SelectedMode, Converter={StaticResource EnumVis}, ConverterParameter=Fixed}">
             <TextBlock Style="{StaticResource CardTitle}" Margin="0,0,0,4" Text="Fixed"/>
-            <TextBlock Style="{StaticResource Body}" Text="One duty for both fans." Margin="0,0,0,12"/>
+            <TextBlock Style="{StaticResource Body}" Text="One duty for both fans, whatever the temperature." Margin="0,0,0,12"/>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <Slider Grid.Column="0" Minimum="0" Maximum="100" TickFrequency="5" Value="{Binding FixedPercent}" x:Name="FixedSlider"
+                <!-- Minimum is FanSafety.MinFixedPercent. Fixed ignores temperature and is latched
+                     into the controller, so a lower duty here would survive closing the app.
+                     XamlResourceTests checks this literal against the constant. -->
+                <Slider Grid.Column="0" Minimum="20" Maximum="100" TickFrequency="5" Value="{Binding FixedPercent}" x:Name="FixedSlider"
                         Thumb.DragCompleted="FixedSlider_DragCompleted" KeyUp="FixedSlider_KeyUp"/>
                 <TextBlock Grid.Column="1" Width="46" Margin="10,0,0,0" TextAlignment="Right" VerticalAlignment="Center"
                            FontSize="14" FontWeight="SemiBold" Text="{Binding FixedPercent, StringFormat={}{0}%}"/>
             </Grid>
-            <TextBlock Style="{StaticResource Muted}" Text="Applied when you release the slider." Margin="0,8,0,0"/>
+            <TextBlock Style="{StaticResource Muted}" Margin="0,8,0,0"
+                       Text="Applied when you release the slider. It will not go below 20 %: this mode never speeds the fans up on its own."/>
         </StackPanel>
 
         <!-- Custom -->

@@ -82,19 +82,73 @@ public class FanControllerTests
         }, Seq(wmi));
     }
 
+    // ---- Safety ---------------------------------------------------------------------
+    // Enforced here rather than only in the UI because --apply reads settings.json and comes
+    // straight to this class with no window in the process.
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(5)]
+    [InlineData(19)]
+    public async Task Fixed_below_the_floor_is_raised_to_it_rather_than_stopping_the_fans(int percent)
+    {
+        var (ctl, wmi) = Make();
+        var r = await ctl.ApplyAsync(FanMode.Fixed, fixedPercent: percent);
+        Assert.True(r.Success);
+        // 20 % of a 229 duty scale. Refusing instead would leave the controller latched wherever
+        // it already was, which is the state being guarded against.
+        Assert.Equal(new[]
+        {
+            "SetCurrentFanStep=0", "SetAutoFanStatus=0", "SetNvThermalTarget=0",
+            "SetFixedFanSpeed=46", "SetGPUFanDuty=46",
+            "SetStepFanStatus=1", "SetFixedFanStatus=1",
+        }, Seq(wmi));
+    }
+
+    [Fact]
+    public async Task Fixed_above_the_floor_is_written_untouched()
+    {
+        var (ctl, wmi) = Make();
+        await ctl.ApplyAsync(FanMode.Fixed, fixedPercent: 20);
+        Assert.Contains("SetFixedFanSpeed=46", Seq(wmi));
+    }
+
+    [Fact]
+    public async Task Custom_with_an_unsafe_curve_fails_without_touching_hardware()
+    {
+        var (ctl, wmi) = Make();
+        // Well-formed, monotonic, and it never ramps: the exact curve the guard exists for.
+        var flat = new FanCurve(new[] { new FanCurvePoint(30, 10), new FanCurvePoint(90, 15) });
+        var r = await ctl.ApplyAsync(FanMode.Custom, curve: flat);
+        Assert.False(r.Success);
+        Assert.Contains("60 %", r.Error);
+        Assert.Empty(wmi.Calls);
+    }
+
+    [Fact]
+    public async Task Turbo_is_unaffected_by_the_fixed_floor()
+    {
+        var (ctl, wmi) = Make();
+        await ctl.ApplyAsync(FanMode.Turbo, fixedPercent: 0);
+        Assert.Contains("SetFixedFanSpeed=229", Seq(wmi));
+    }
+
     [Fact]
     public async Task Custom_enables_step_mode_then_writes_points_and_terminator()
     {
         var (ctl, wmi) = Make();
-        var curve = new FanCurve(new[] { new FanCurvePoint(40, 30), new FanCurvePoint(80, 100) });
+        // The fixture used to end at 80 °C, which FanSafety now rejects: above the last point the
+        // controller holds that duty for ever, so the table has to reach at least 85 °C. Only the
+        // curve moved - what is being pinned here is still the write sequence and the terminator.
+        var curve = new FanCurve(new[] { new FanCurvePoint(40, 60), new FanCurvePoint(90, 100) });
         var r = await ctl.ApplyAsync(FanMode.Custom, curve: curve);
         Assert.True(r.Success);
         Assert.Equal(new[]
         {
             "SetCurrentFanStep=0", "SetFixedFanStatus=0", "SetAutoFanStatus=0",
             "SetNvThermalTarget=0", "SetStepFanStatus=1",
-            "Set.SetFanIndexValue(Index=0,Temperture=40,Value=69)",
-            "Set.SetFanIndexValue(Index=1,Temperture=80,Value=229)",
+            "Set.SetFanIndexValue(Index=0,Temperture=40,Value=137)",
+            "Set.SetFanIndexValue(Index=1,Temperture=90,Value=229)",
             "Set.SetFanIndexValue(Index=2,Temperture=0,Value=0)",
         }, Seq(wmi));
     }

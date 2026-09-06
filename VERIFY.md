@@ -63,6 +63,50 @@ Launch the app: `dotnet run --project src/OpenAorus.App -- --show`
 - [ ] Close the app entirely and confirm the curve still governs the fans, which is the
       whole point of writing it into the controller rather than polling from software
 
+### 3.1 The safety guards
+
+Both settings in section 3 outlive the app: Fixed latches `SetFixedFanStatus` and a custom
+curve is written into the controller's own table, so either one governs the fans after the
+window is closed and after a reboot, with nothing left running to reconsider. Nothing in
+the recovered protocol documents a controller-side minimum or an emergency override, so
+the floors in `FanSafety` are the only ones there are, and this section is what confirms
+they are actually reaching the hardware rather than only the UI.
+
+Do not skip the load test at the end. Everything above it checks that the app refuses
+something; only that one checks that what it *did* accept still cools the machine.
+
+- [ ] The Fixed slider will not go below 20 %, by drag or by arrow key. The number beside
+      it never reads less
+- [ ] In the curve editor, drag the 80 °C point down to about 20 %. The line under the
+      table says the curve needs at least 60 % at 80 °C, naming both numbers. Click Apply:
+      the banner says the same thing and `--dump` shows the fan table unchanged
+- [ ] Drag the last point down to 80 °C. The editor says the last point must be at 85 °C
+      or above. This is the rule that is easiest to think is pedantic: above its last point
+      the controller holds that point's duty indefinitely, so a table ending at 80 °C hands
+      the whole danger zone back to whatever duty was last written
+- [ ] Put the first points at 0 % while leaving the hot end alone. This must still apply -
+      a silent idle is the point of a custom curve, and the guard is about the danger zone
+      only
+- [ ] Close the app. Edit `%LocalAppData%\OpenAorus\settings.json` by hand to
+      `"FixedPercent": 0` and a flat curve (two points, both 0 %), then start the app.
+      A banner says the saved fan settings could have left the fans too slow, the Fixed
+      slider reads 20 %, and the curve editor shows the default curve
+- [ ] With that same edited file, run `--apply` instead of opening the window and then
+      `--dump`. The fan table must be the default curve, not the flat one: `--apply` never
+      touches the UI, so this is the check that the guard lives in the domain and not in
+      the window
+- [ ] Load the machine until the CPU passes 90 °C in a mode whose duty is under 80 % -
+      Quiet under a stress test is the usual way there. Within a second or two the fans
+      go to full, the mode selection moves to Turbo, and the banner reads
+      `Fans forced to full: CPU reached <n> °C`. It must say that **once**: watch for a
+      further half minute and confirm the fans are not being re-driven every second, and
+      that the banner does not clear itself while the machine is still hot
+- [ ] **The one that matters.** Set a custom curve you would actually use, click Apply,
+      quit the app from the tray, and then load the machine with nothing of OpenAorus
+      running. The fans must ramp as the temperature climbs. If they sit at the low end
+      instead, the controller is not running the table and every guard above is guarding
+      something that was never in charge
+
 ## 4. Battery, autostart and taking over from Gigabyte Control Center
 
 Publish the app first and run the published executable for this section, rather than
@@ -256,6 +300,18 @@ symptom shows up above.
 - **The GPU temperature source.** `getGpuTemp1` is read first and `GetThermalData`'s
   second sensor is the fallback. Step 1 asks you to confirm which one actually tracks
   the GPU.
+- **That the controller has no floor of its own.** The fan floors exist because nothing
+  recovered from Gigabyte's software mentions a minimum duty or a thermal override below
+  the values the app writes, so the app assumes there is none and refuses to write a
+  setting that would stop the fans. If a duty of 0 turns out to be quietly ignored by the
+  firmware, the guards are merely redundant, which is the harmless direction to be wrong
+  in. Section 3.1's load test is what would show the opposite - a curve accepted by the
+  app and then not run by the controller.
+- **That 90 °C is the right place for the watchdog to intervene.** It is chosen to sit
+  above any normal load and below anything that throttles hard, not measured. If the
+  17G KD's own thermal management already has the fans up well before that, the watchdog
+  will simply never fire, which section 3.1 asks you to confirm by making it fire on
+  purpose.
 
 ## If something fails
 

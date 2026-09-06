@@ -23,17 +23,28 @@ public sealed class SettingsStore
     public bool LastLoadWasReset { get; private set; }
 
     /// <summary>True after a call to <see cref="Load"/> that read the file fine but had to replace
-    /// values inside it that the hardware layer would not accept - see <see cref="LightingSettings.Repair"/>.
+    /// values inside it that the hardware layer would not accept - see <see cref="LightingSettings.Repair"/>
+    /// and <see cref="AppSettings.RepairFans"/>.
     /// The rest of the file survives, so this is a milder notice than <see cref="LastLoadWasReset"/>,
     /// but the owner still had settings changed under them and is told for the same reason.</summary>
-    public bool LastLoadRepaired { get; private set; }
+    public bool LastLoadRepaired => LastLoadLightingRepaired || LastLoadFansRepaired;
+
+    /// <summary>The lighting half of <see cref="LastLoadRepaired"/>. Split out so the notice can
+    /// name what actually changed instead of blaming lighting for a fan repair.</summary>
+    public bool LastLoadLightingRepaired { get; private set; }
+
+    /// <summary>The fan half of <see cref="LastLoadRepaired"/>: a Fixed duty raised to the
+    /// <see cref="Fans.FanSafety.MinFixedPercent"/> floor, or a curve that could not be made safe
+    /// replaced with <see cref="Fans.FanCurve.Default"/>.</summary>
+    public bool LastLoadFansRepaired { get; private set; }
 
     public SettingsStore(string path) => Path = path;
 
     public AppSettings Load()
     {
         LastLoadWasReset = false;
-        LastLoadRepaired = false;
+        LastLoadLightingRepaired = false;
+        LastLoadFansRepaired = false;
         if (!File.Exists(Path)) return new AppSettings();
         try
         {
@@ -42,7 +53,8 @@ public sealed class SettingsStore
             // that as readable would silently drop every saved setting with nothing said about it.
             var settings = JsonSerializer.Deserialize<AppSettings>(json, Options)
                 ?? throw new JsonException("The settings file holds no settings object.");
-            LastLoadRepaired = settings.Lighting.Repair();
+            LastLoadLightingRepaired = settings.Lighting.Repair();
+            LastLoadFansRepaired = settings.RepairFans();
             return settings;
         }
         catch (Exception)

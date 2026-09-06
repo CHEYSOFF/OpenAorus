@@ -180,6 +180,19 @@ app if that matters to you. Whether the controller genuinely keeps running a
 Custom curve with the app closed is itself one of the unverified assumptions
 in [`VERIFY.md`](VERIFY.md), not yet a confirmed guarantee.
 
+Because those settings outlive the app, there are floors under them. Fixed
+will not go below 20 %, and a custom curve has to reach 60 % by 80 °C and 90 %
+by 90 °C with its last point at 85 °C or above, so that the table still governs
+the temperatures that matter rather than leaving the controller holding a low
+duty above the last point it was given. A curve that sits at 0 % while the
+machine is cool is fine and stays fine - that is how a silent idle works, and
+the controller ramps it as things heat up. The floors are checked wherever a
+setting reaches the hardware, including `--apply`, and an old or hand-edited
+`settings.json` that breaks them is repaired on load with a notice saying so.
+While the app is running it also watches the CPU: at 90 °C with the fans under
+80 % it forces Turbo once and tells you, and leaves the machine there rather
+than quietly putting it back.
+
 ## Docs
 
 - [v0.1 design](docs/superpowers/specs/2026-09-06-openaorus-v0.1-design.md) and

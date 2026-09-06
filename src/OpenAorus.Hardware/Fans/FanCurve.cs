@@ -24,6 +24,18 @@ public sealed class FanCurve
 
     public bool IsValid => Validate().Count == 0;
 
+    /// <summary>
+    /// Everything wrong with this curve: the structural rules the controller's table needs,
+    /// then the <see cref="FanSafety"/> rules that stop it leaving the machine uncooled.
+    /// </summary>
+    /// <remarks>
+    /// The safety rules live on this method rather than beside its callers because this is the
+    /// path every apply already goes through - including <c>--apply</c>, which reads settings.json
+    /// and drives <see cref="FanController"/> with no UI in the process at all.
+    /// Structural errors are listed first: callers that show one error show the first, and a
+    /// curve that is malformed has to be made well-formed before a duty rule means anything.
+    /// </remarks>
+    /// <returns>One string per broken rule; empty when the curve may be written.</returns>
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
@@ -42,6 +54,7 @@ public sealed class FanCurve
                     errors.Add($"Point {i + 1}: duty must not decrease.");
             }
         }
+        errors.AddRange(FanSafety.CurveErrors(Points));
         return errors;
     }
 }

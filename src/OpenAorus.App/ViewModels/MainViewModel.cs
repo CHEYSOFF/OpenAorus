@@ -12,6 +12,7 @@ public partial class MainViewModel : ObservableObject
     private readonly AppServices _s;
     private readonly SensorPoller _poller;
     private readonly BannerState _bannerState;
+    private readonly FanWatchdog _watchdog = new();
 
     [ObservableProperty] private FanMode _selectedMode;
     [ObservableProperty] private int _fixedPercent;
@@ -40,7 +41,10 @@ public partial class MainViewModel : ObservableObject
         _selectedMode = _s.Settings.Mode;
         _fixedPercent = _s.Settings.FixedPercent;
         _poller = new SensorPoller(_s.Sensors, _s.Settings.PollIntervalHiddenMs);
-        _poller.Updated += OnSensors;
+        // Dropped rather than awaited: the poller raises this on the UI thread and has nowhere to
+        // await it. A poll that forces Turbo runs a write sequence lasting a few seconds, and the
+        // watchdog's own latch is what stops the next tick starting a second one on top of it.
+        _poller.Updated += snap => _ = OnSensorPollAsync(snap);
         Curve = new CurveEditorViewModel(_s.Settings.Curve);
         Battery = new BatteryViewModel(_s, SetBanner);
         Lighting = new LightingViewModel(_s, SetBanner);
@@ -60,14 +64,22 @@ public partial class MainViewModel : ObservableObject
         }
         else if (_s.Store.LastLoadRepaired)
         {
-            // Same route as the reset notice above, and for the same reason: the owner's saved
-            // lighting changed without them asking. Only what the keyboard could not have accepted
-            // was touched -- clamped where a value had a sane nearest match, removed where it did
-            // not -- so this says both rather than claiming a full reset.
-            _bannerState.ReportOverrideNotice(BannerKind.Warning,
-                "Some saved lighting settings were out of range and have been reset to defaults. " +
-                "Saved presets or per-key colours that could not be read were removed. " +
-                "Everything else in your settings was kept.");
+            // Same route as the reset notice above, and for the same reason: settings changed
+            // without the owner asking. Only what could not have been accepted was touched --
+            // clamped where a value had a sane nearest match, replaced where it did not -- so
+            // this says that rather than claiming a full reset, and names which half was
+            // repaired: a changed fan curve is not something to report as a lighting problem.
+            var parts = new List<string>();
+            if (_s.Store.LastLoadLightingRepaired)
+                parts.Add("Some saved lighting settings were out of range and have been reset to defaults. " +
+                          "Saved presets or per-key colours that could not be read were removed.");
+            if (_s.Store.LastLoadFansRepaired)
+                parts.Add("Saved fan settings could have left the fans too slow to cool the machine: a Fixed duty " +
+                          $"below {FanSafety.MinFixedPercent} % has been raised to it, and a custom curve that does " +
+                          "not ramp up when hot has been replaced with the default curve.");
+            parts.Add("Everything else in your settings was kept.");
+
+            _bannerState.ReportOverrideNotice(BannerKind.Warning, string.Join(" ", parts));
             SyncBanner();
         }
     }
@@ -116,11 +128,59 @@ public partial class MainViewModel : ObservableObject
     partial void OnIsWindowVisibleChanged(bool value) =>
         _poller.SetInterval(value ? _s.Settings.PollIntervalVisibleMs : _s.Settings.PollIntervalHiddenMs);
 
-    private void OnSensors(SensorSnapshot snap)
+    /// <summary>
+    /// Handles one sensor poll: publishes the reading, reports it to the banner, and gives the
+    /// thermal watchdog its look at the machine.
+    /// </summary>
+    /// <remarks>Public because the watchdog's behaviour is only worth anything if it can be
+    /// driven a poll at a time in a test; <see cref="SensorPoller"/> is the only other caller.</remarks>
+    /// <param name="snap">The reading this poll produced.</param>
+    public async Task OnSensorPollAsync(SensorSnapshot snap)
     {
         Sensors = snap;
         _bannerState.ReportSensorResult(snap.Ok, snap.Error);
         SyncBanner();
+        await RunWatchdogAsync(snap);
+    }
+
+    /// <summary>
+    /// Forces Turbo when the CPU has reached <see cref="FanSafety.WatchdogTriggerTemperature"/> °C
+    /// with the fans doing too little about it.
+    /// </summary>
+    /// <remarks>
+    /// The CPU fan's duty is the one read, because the CPU's temperature is what triggered this;
+    /// on a one-fan profile the second reading is always 0 and would fire this constantly.
+    ///
+    /// Nothing is reverted afterwards and nothing is written back to settings.json. Leaving the
+    /// machine at full and saying so is the safe end of that choice - the owner can pick another
+    /// mode the moment they see the notice - whereas dropping back out of Turbo on a timer would
+    /// mean the app silently undoing the one thing it did to protect the hardware.
+    /// </remarks>
+    private async Task RunWatchdogAsync(SensorSnapshot snap)
+    {
+        // The WMI writes are withheld on an unrecognised model, so there is nothing to force and
+        // no point saying so once a second on top of the banner that already explains why.
+        if (!CanWrite) return;
+        if (!_watchdog.Observe(snap.CpuTemp, snap.Fan1DutyPercent)) return;
+
+        // Not gated on IsBusy: FanController serializes its own sequences, and an emergency that
+        // arrives during the owner's mode click has to be the one that lands last, not the one
+        // that gets dropped.
+        var r = await _s.Fans.ApplyAsync(FanMode.Turbo, FixedPercent, _s.Settings.ToCurve());
+        if (r.Success)
+        {
+            SelectedMode = FanMode.Turbo;
+            StatusLine = $"Fans forced to full at {snap.CpuTemp} °C";
+            SetBanner(BannerKind.Warning,
+                $"Fans forced to full: CPU reached {snap.CpuTemp} °C. They have been left there - " +
+                "pick a fan mode yourself once the machine has cooled down.");
+        }
+        else
+        {
+            StatusLine = "Emergency fan override failed";
+            _bannerState.ReportFailure($"CPU reached {snap.CpuTemp} °C and forcing the fans to full failed: {r.Error}");
+            SyncBanner();
+        }
     }
 
     private async void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)

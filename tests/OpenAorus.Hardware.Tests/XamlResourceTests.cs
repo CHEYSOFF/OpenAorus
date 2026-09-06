@@ -141,4 +141,29 @@ public class XamlResourceTests
         Assert.True(binding.Success, $"{fileName} does not bind {property}");
         Assert.Contains("UpdateSourceTrigger=PropertyChanged", binding.Value, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The Fixed slider must not be able to reach a duty the controller would refuse anyway.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="OpenAorus.Hardware.Fans.FanController"/> raises anything below the floor, so a
+    /// slider that still went to 0 would not stop the fans - it would just show a number the
+    /// hardware is not running, which is its own kind of wrong on the one screen an owner uses to
+    /// judge whether the machine is cooling itself. Markup cannot share a C# constant without a
+    /// run-time lookup that would fail only once the panel is shown, so the literal is checked
+    /// against the constant here instead.
+    /// </remarks>
+    [Fact]
+    public void The_fixed_slider_cannot_be_dragged_below_the_safety_floor()
+    {
+        var text = File.ReadAllText(Path.Combine(XamlDirectory, "Views", "ContextPanel.xaml"));
+
+        var slider = Regex.Match(text, @"<Slider[^>]*Value=""\{Binding FixedPercent\}""[^>]*>",
+            RegexOptions.Singleline);
+        Assert.True(slider.Success, "ContextPanel.xaml has no slider bound to FixedPercent");
+
+        var minimum = Regex.Match(slider.Value, @"Minimum=""(\d+)""");
+        Assert.True(minimum.Success, "the Fixed slider declares no Minimum");
+        Assert.Equal(OpenAorus.Hardware.Fans.FanSafety.MinFixedPercent, int.Parse(minimum.Groups[1].Value));
+    }
 }
