@@ -7,70 +7,121 @@
         <BooleanToVisibilityConverter x:Key="BoolVis"/>
         <app:EnumEqualsVisibilityConverter x:Key="EnumVis"/>
         <DataTemplate x:Key="SwatchTemplate">
-            <Border Width="46" Height="12" CornerRadius="2" BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
+            <Border Width="52" Height="14" CornerRadius="3" BorderThickness="1" BorderBrush="{StaticResource ControlBorder}">
                 <Border.Background><SolidColorBrush Color="{Binding}"/></Border.Background>
             </Border>
         </DataTemplate>
-        <!-- The theme paints every TextBlock light, which is right everywhere except inside a
-             ComboBox: those keep the system's light chrome, and the effect name came out white on
-             white. An ItemTemplate covers the closed selection box as well as the open list. -->
-        <DataTemplate x:Key="ComboText">
-            <TextBlock Text="{Binding}" Foreground="{StaticResource AccentFg}"/>
-        </DataTemplate>
+        <!-- Every parameter row is the same four columns, so the labels line up down the left
+             and the controls line up down the middle whichever effect is showing. -->
+        <Style x:Key="Row" TargetType="Grid">
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style x:Key="RowLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{StaticResource FgMuted}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="MinWidth" Value="74"/>
+        </Style>
+        <Style x:Key="RowValue" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Margin" Value="10,0,0,0"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="12.5"/>
+        </Style>
     </UserControl.Resources>
 
-    <StackPanel IsEnabled="{Binding KeyboardPresent}">
+    <StackPanel IsEnabled="{Binding KeyboardPresent}" Grid.IsSharedSizeScope="True">
         <Border Style="{StaticResource CardStyle}">
             <StackPanel>
-                <TextBlock Style="{StaticResource Muted}" Text="{Binding DeviceLine}" Margin="0,0,0,6"/>
+                <TextBlock Style="{StaticResource Muted}" Text="{Binding DeviceLine}" Margin="0,0,0,10"/>
 
-                <DockPanel Margin="0,0,0,6">
-                    <Button DockPanel.Dock="Right" Content="Apply" Margin="6,0,0,0" Command="{Binding ApplyEffectCommand}"/>
-                    <ComboBox ItemsSource="{Binding Effects}" SelectedItem="{Binding SelectedEffect}"
-                              ItemTemplate="{StaticResource ComboText}"/>
-                </DockPanel>
+                <Grid Style="{StaticResource Row}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LightLabel"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource RowLabel}" Text="Effect"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Effects}" SelectedItem="{Binding SelectedEffect}"/>
+                    <Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="Apply" Margin="8,0,0,0"
+                            Command="{Binding ApplyEffectCommand}"/>
+                </Grid>
 
                 <!-- Each parameter row is bound to the flag for the effect that uses it, so an
                      effect that ignores speed or direction simply does not offer the control. -->
-                <DockPanel Margin="0,0,0,6" Visibility="{Binding SupportsColor, Converter={StaticResource BoolVis}}">
-                    <TextBlock DockPanel.Dock="Left" Width="70" VerticalAlignment="Center" Text="Colour"/>
+                <Grid Style="{StaticResource Row}" Visibility="{Binding SupportsColor, Converter={StaticResource BoolVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LightLabel"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource RowLabel}" Text="Colour"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Swatches}" SelectedItem="{Binding PickedColor}"
+                              ItemTemplate="{StaticResource SwatchTemplate}" ToolTip="Pick a colour"/>
                     <!-- PropertyChanged so the view model sees the value as it is typed, which is
                          what its half-typed-value guard is written against. -->
-                    <TextBox DockPanel.Dock="Right" Width="76" Margin="6,0,0,0"
+                    <TextBox Grid.Column="2" Width="92" Margin="8,0,0,0"
                              Text="{Binding ColorHex, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Or type it as #RRGGBB"/>
-                    <ComboBox ItemsSource="{Binding Swatches}" SelectedItem="{Binding PickedColor}"
-                              ItemTemplate="{StaticResource SwatchTemplate}"/>
-                </DockPanel>
+                    <Border Grid.Column="3" Width="30" Height="30" Margin="8,0,0,0" CornerRadius="6"
+                            BorderThickness="1" BorderBrush="{StaticResource ControlBorder}">
+                        <Border.Background><SolidColorBrush Color="{Binding PickedColor}"/></Border.Background>
+                    </Border>
+                </Grid>
 
-                <DockPanel Margin="0,0,0,6" Visibility="{Binding SupportsSecondColor, Converter={StaticResource BoolVis}}">
-                    <TextBlock DockPanel.Dock="Left" Width="70" VerticalAlignment="Center" Text="Second"/>
-                    <TextBox DockPanel.Dock="Right" Width="76" Margin="6,0,0,0"
+                <Grid Style="{StaticResource Row}" Visibility="{Binding SupportsSecondColor, Converter={StaticResource BoolVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LightLabel"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource RowLabel}" Text="Second"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Swatches}" SelectedItem="{Binding PickedSecondColor}"
+                              ItemTemplate="{StaticResource SwatchTemplate}" ToolTip="Pick a colour"/>
+                    <TextBox Grid.Column="2" Width="92" Margin="8,0,0,0"
                              Text="{Binding SecondColorHex, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Or type it as #RRGGBB"/>
-                    <ComboBox ItemsSource="{Binding Swatches}" SelectedItem="{Binding PickedSecondColor}"
-                              ItemTemplate="{StaticResource SwatchTemplate}"/>
-                </DockPanel>
+                    <Border Grid.Column="3" Width="30" Height="30" Margin="8,0,0,0" CornerRadius="6"
+                            BorderThickness="1" BorderBrush="{StaticResource ControlBorder}">
+                        <Border.Background><SolidColorBrush Color="{Binding PickedSecondColor}"/></Border.Background>
+                    </Border>
+                </Grid>
 
-                <DockPanel Margin="0,0,0,6" Visibility="{Binding SupportsSpeed, Converter={StaticResource BoolVis}}">
-                    <TextBlock DockPanel.Dock="Left" Width="70" Text="Speed"/>
-                    <TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding SpeedPercent, StringFormat={}{0}%}"/>
-                    <Slider Minimum="0" Maximum="100" TickFrequency="10" Value="{Binding SpeedPercent}"/>
-                </DockPanel>
+                <Grid Style="{StaticResource Row}" Visibility="{Binding SupportsSpeed, Converter={StaticResource BoolVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LightLabel"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource RowLabel}" Text="Speed"/>
+                    <Slider Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="10" Value="{Binding SpeedPercent}"/>
+                    <TextBlock Grid.Column="2" Style="{StaticResource RowValue}" Text="{Binding SpeedPercent, StringFormat={}{0}%}"/>
+                </Grid>
 
-                <DockPanel Margin="0,0,0,6">
-                    <TextBlock DockPanel.Dock="Left" Width="70" Text="Brightness"/>
-                    <TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding BrightnessPercent, StringFormat={}{0}%}"/>
-                    <Slider Minimum="0" Maximum="100" TickFrequency="10" Value="{Binding BrightnessPercent}"/>
-                </DockPanel>
+                <Grid Style="{StaticResource Row}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LightLabel"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource RowLabel}" Text="Brightness"/>
+                    <Slider Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="10" Value="{Binding BrightnessPercent}"/>
+                    <TextBlock Grid.Column="2" Style="{StaticResource RowValue}" Text="{Binding BrightnessPercent, StringFormat={}{0}%}"/>
+                </Grid>
 
-                <DockPanel Margin="0,0,0,6" Visibility="{Binding SupportsDirection, Converter={StaticResource BoolVis}}">
-                    <TextBlock DockPanel.Dock="Left" Width="70" VerticalAlignment="Center" Text="Direction"/>
-                    <ComboBox ItemsSource="{Binding Directions}" SelectedItem="{Binding Direction}"
-                              ItemTemplate="{StaticResource ComboText}"/>
-                </DockPanel>
+                <Grid Style="{StaticResource Row}" Visibility="{Binding SupportsDirection, Converter={StaticResource BoolVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="LightLabel"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource RowLabel}" Text="Direction"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Directions}" SelectedItem="{Binding Direction}"/>
+                </Grid>
 
-                <CheckBox Content="Let the effect pick its own colours" IsChecked="{Binding Random}"
+                <CheckBox Content="Let the effect pick its own colours" IsChecked="{Binding Random}" Margin="0,2,0,0"
                           Visibility="{Binding SupportsRandom, Converter={StaticResource BoolVis}}"/>
             </StackPanel>
         </Border>
@@ -83,28 +134,35 @@
 
         <Border Style="{StaticResource CardStyle}">
             <StackPanel>
-                <TextBlock Text="Presets" Margin="0,0,0,6"/>
+                <TextBlock Style="{StaticResource CardTitle}" Text="Presets"/>
                 <ItemsControl ItemsSource="{Binding Presets}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,6,6">
-                                <Button Content="{Binding Name}"
-                                        Command="{Binding DataContext.ApplyPresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                        CommandParameter="{Binding}"/>
-                                <Button Content="×" Padding="6,5" Margin="2,0,0,0" ToolTip="Delete this preset"
-                                        Command="{Binding DataContext.DeletePresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                        CommandParameter="{Binding}"/>
-                            </StackPanel>
+                            <!-- Name and delete are one chip: a rounded well holding the two
+                                 buttons, so the × belongs to the preset it removes rather than
+                                 floating beside it as an equal. -->
+                            <Border Margin="0,0,6,6" CornerRadius="6" Background="{StaticResource Control}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="{Binding Name}" Background="Transparent"
+                                            Command="{Binding DataContext.ApplyPresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="✕" Style="{StaticResource RemoveButton}" ToolTip="Delete this preset"
+                                            Command="{Binding DataContext.DeletePresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <Button Content="Save current as preset" HorizontalAlignment="Left" Command="{Binding SavePresetCommand}"/>
+                <Button Content="Save current as preset" HorizontalAlignment="Left" Margin="0,4,0,0"
+                        Command="{Binding SavePresetCommand}"/>
             </StackPanel>
         </Border>
 
-        <TextBlock Style="{StaticResource Muted}" Text="{Binding StatusText}" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Style="{StaticResource Muted}" Text="{Binding StatusText}" TextTrimming="CharacterEllipsis"
+                   Margin="2,0,0,0"/>
     </StackPanel>
 </UserControl>

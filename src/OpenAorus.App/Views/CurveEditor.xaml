@@ -3,36 +3,47 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="160"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="125"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <Border Grid.Row="0" Background="#FF15171B" CornerRadius="4">
+        <TextBlock Grid.Row="0" Style="{StaticResource CardTitle}" Text="Custom curve"/>
+        <!-- The plot is the darkest surface in the window: it is a chart, and it should read
+             as a well rather than as another raised panel. -->
+        <Border Grid.Row="1" Background="{StaticResource Bg}" CornerRadius="6"
+                BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
             <Canvas x:Name="Plot" ClipToBounds="True" Background="Transparent"
                     MouseLeftButtonDown="Plot_MouseLeftButtonDown" MouseMove="Plot_MouseMove"
                     MouseLeftButtonUp="Plot_MouseLeftButtonUp" LostMouseCapture="Plot_LostMouseCapture" SizeChanged="Plot_SizeChanged"/>
         </Border>
-        <DataGrid Grid.Row="1" Margin="0,6,0,6" ItemsSource="{Binding Points}" AutoGenerateColumns="False"
-                  CanUserAddRows="False" HeadersVisibility="Column" Background="#FF1E2127" Foreground="#FFE6E8EC"
-                  RowBackground="#FF1E2127" AlternatingRowBackground="#FF23272E" GridLinesVisibility="None"
-                  BorderThickness="0" MaxHeight="140" SelectionMode="Single" x:Name="Table">
+        <DataGrid Grid.Row="2" Margin="0,10,0,10" ItemsSource="{Binding Points}"
+                  CanUserAddRows="False" MaxHeight="112" SelectionMode="Single" x:Name="Table">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="°C" Binding="{Binding Temperature, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
-                <DataGridTextColumn Header="Duty %" Binding="{Binding DutyPercent, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
-                <DataGridTemplateColumn Width="40">
+                <DataGridTextColumn Header="°C" Width="*"
+                                    EditingElementStyle="{StaticResource CellEditor}"
+                                    Binding="{Binding Temperature, UpdateSourceTrigger=PropertyChanged}"/>
+                <DataGridTextColumn Header="Duty %" Width="*"
+                                    EditingElementStyle="{StaticResource CellEditor}"
+                                    Binding="{Binding DutyPercent, UpdateSourceTrigger=PropertyChanged}"/>
+                <DataGridTemplateColumn Width="34">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Content="✕" Padding="4,0" Command="{Binding DataContext.RemovePointCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}"/>
+                            <Button Content="✕" Style="{StaticResource RemoveButton}" MinHeight="24" Height="24"
+                                    ToolTip="Remove this point"
+                                    Command="{Binding DataContext.RemovePointCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    CommandParameter="{Binding}"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
-        <DockPanel Grid.Row="2">
-            <Button DockPanel.Dock="Right" Content="Apply" Margin="6,0,0,0" x:Name="ApplyButton"/>
+        <DockPanel Grid.Row="3">
+            <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Apply" Margin="6,0,0,0" x:Name="ApplyButton"/>
             <Button DockPanel.Dock="Right" Content="Reset" Margin="6,0,0,0" Command="{Binding ResetCommand}"/>
-            <Button DockPanel.Dock="Right" Content="+ Point" Command="{Binding AddPointCommand}"/>
-            <TextBlock Text="{Binding ValidationText}" VerticalAlignment="Center" Foreground="#FF8B919C"/>
+            <Button DockPanel.Dock="Right" Content="Add point" Command="{Binding AddPointCommand}"/>
+            <TextBlock Style="{StaticResource Muted}" Text="{Binding ValidationText}" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
         </DockPanel>
     </Grid>
 </UserControl>

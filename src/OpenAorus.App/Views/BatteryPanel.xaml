@@ -4,15 +4,24 @@
     <Border Style="{StaticResource CardStyle}" IsEnabled="{Binding CanWrite}">
         <StackPanel>
             <DockPanel>
-                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Muted}" Text="{Binding CycleCount, StringFormat={}{0} cycles}"/>
+                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                           Text="{Binding CycleCount, StringFormat={}{0} cycles}"/>
                 <CheckBox Content="Limit charge" IsChecked="{Binding LimitEnabled}" Checked="Limit_Changed" Unchecked="Limit_Changed"/>
             </DockPanel>
-            <DockPanel Margin="0,6,0,0" IsEnabled="{Binding LimitEnabled}">
-                <TextBlock DockPanel.Dock="Right" Width="44" TextAlignment="Right" Text="{Binding StopPercent, StringFormat={}{0}%}"/>
-                <Slider Minimum="60" Maximum="100" TickFrequency="5" Value="{Binding StopPercent}"
+            <!-- The stop percentage aligns with the Fixed duty readout a card above: same
+                 width, same weight, same distance from the right edge. -->
+            <Grid Margin="0,10,0,0" IsEnabled="{Binding LimitEnabled}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Slider Grid.Column="0" Minimum="60" Maximum="100" TickFrequency="5" Value="{Binding StopPercent}"
                         Thumb.DragCompleted="Stop_DragCompleted"/>
-            </DockPanel>
-            <TextBlock Style="{StaticResource Muted}" Text="{Binding StatusText}" Margin="0,4,0,0"/>
+                <TextBlock Grid.Column="1" Width="46" Margin="10,0,0,0" TextAlignment="Right" VerticalAlignment="Center"
+                           FontSize="14" FontWeight="SemiBold" Text="{Binding StopPercent, StringFormat={}{0}%}"/>
+            </Grid>
+            <TextBlock Style="{StaticResource Muted}" Text="{Binding StatusText}" Margin="0,8,0,0"
+                       TextTrimming="CharacterEllipsis"/>
         </StackPanel>
     </Border>
 </UserControl>

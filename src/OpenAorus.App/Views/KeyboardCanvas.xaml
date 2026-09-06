@@ -7,7 +7,7 @@
         <app:SelectionBrushConverter x:Key="SelBrush"/>
         <app:ReadableForegroundConverter x:Key="KeyFg"/>
         <DataTemplate x:Key="SwatchTemplate">
-            <Border Width="46" Height="12" CornerRadius="2" BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
+            <Border Width="52" Height="14" CornerRadius="3" BorderThickness="1" BorderBrush="{StaticResource ControlBorder}">
                 <Border.Background><SolidColorBrush Color="{Binding}"/></Border.Background>
             </Border>
         </DataTemplate>
@@ -32,28 +32,35 @@
          of the picture entirely, or as the capture being taken away from us. -->
     <StackPanel x:Name="PaintSurface" PreviewMouseLeftButtonUp="Paint_Up" MouseMove="Paint_Move"
                 MouseLeave="Paint_Left" LostMouseCapture="Paint_Lost">
-        <DockPanel Margin="0,0,0,6">
-            <TextBlock DockPanel.Dock="Left" Width="42" VerticalAlignment="Center" Text="Brush"/>
-            <ComboBox DockPanel.Dock="Left" Width="64" ItemsSource="{Binding Swatches}"
+        <!-- Same shape as the Colour row on the panel above: label, swatch picker, hex, chip. -->
+        <Grid Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="LightLabel"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" MinWidth="74" VerticalAlignment="Center" FontSize="12.5"
+                       Foreground="{StaticResource FgMuted}" Text="Brush"/>
+            <ComboBox Grid.Column="1" ItemsSource="{Binding Swatches}"
                       SelectedItem="{Binding BrushColor}" ItemTemplate="{StaticResource SwatchTemplate}"
                       ToolTip="Pick the colour to paint with"/>
             <!-- PropertyChanged, not the default LostFocus: clicking a key in the picture does not
                  move focus out of this box, so a typed colour would still be sitting here unread
                  while the key painted in the colour before it. -->
-            <TextBox DockPanel.Dock="Left" Width="76" Margin="6,0,0,0"
+            <TextBox Grid.Column="2" Width="92" Margin="8,0,0,0"
                      Text="{Binding BrushHex, UpdateSourceTrigger=PropertyChanged}"
                      ToolTip="Or type it as #RRGGBB"/>
-            <Border DockPanel.Dock="Left" Width="22" Margin="6,0,0,0" CornerRadius="3"
-                    BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
+            <Border Grid.Column="3" Width="30" Height="30" Margin="8,0,0,0" CornerRadius="6"
+                    BorderThickness="1" BorderBrush="{StaticResource ControlBorder}">
                 <Border.Background><SolidColorBrush Color="{Binding BrushColor}"/></Border.Background>
             </Border>
-            <TextBlock/>
-        </DockPanel>
+        </Grid>
 
         <!-- Scaled to fit rather than scrolled: a numpad the owner has to scroll sideways to reach
              is the one part of the keyboard they would most easily believe is not there. Down only,
              so on a wider window the keys stay their natural size instead of being blown up. -->
-        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,0,0,6">
+        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,0,0,10">
             <!-- One tab stop for the whole picture, arrows to move inside it. Without this all
                  101 keys sit in the tab order, so reaching Apply from the brush box means
                  tabbing across the entire keyboard. -->
@@ -103,16 +110,20 @@
         </Viewbox>
 
         <DockPanel>
-            <Button DockPanel.Dock="Right" Content="Apply" Margin="6,0,0,0" Command="{Binding ApplyCommand}"/>
+            <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Apply" Margin="6,0,0,0" Command="{Binding ApplyCommand}"/>
             <Button DockPanel.Dock="Right" Content="Read" Margin="6,0,0,0" Command="{Binding ReadFromKeyboardCommand}"
                     ToolTip="Load the colours the keyboard is holding now"/>
             <Button DockPanel.Dock="Right" Content="Clear" Margin="6,0,0,0" Command="{Binding ClearCommand}"/>
             <Button DockPanel.Dock="Right" Content="Fill" Command="{Binding FillAllCommand}"/>
             <TextBlock Style="{StaticResource Muted}" VerticalAlignment="Center" Text="{Binding StatusText}"
-                       TextTrimming="CharacterEllipsis"/>
+                       TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
         </DockPanel>
 
-        <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
-                   Text="The slot order is recovered, not measured. Paint one key, press Apply, and check that the key that lights is the one you painted. If it is not, set &quot;LayoutOverride&quot; to &quot;EngUs&quot; or &quot;EngUk&quot; in settings.json and restart."/>
+        <!-- A caveat, not a caption: set apart on its own rule so it does not read as a label
+             belonging to the buttons above it. -->
+        <Border Margin="0,12,0,0" Padding="0,8,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource Divider}">
+            <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
+                       Text="The slot order is recovered, not measured. Paint one key, press Apply, and check that the key that lights is the one you painted. If it is not, set &quot;LayoutOverride&quot; to &quot;EngUs&quot; or &quot;EngUk&quot; in settings.json and restart."/>
+        </Border>
     </StackPanel>
 </UserControl>

@@ -43,7 +43,7 @@ public partial class CurveEditor : UserControl
     {
         Plot.Children.Clear();
         if (_vm is null) return;
-        var grid = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF));
+        var grid = new SolidColorBrush(Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF));
         for (var i = 1; i < 10; i++)
         {
             Plot.Children.Add(new Line { X1 = i * W / 10, X2 = i * W / 10, Y1 = 0, Y2 = H, Stroke = grid, StrokeThickness = 1 });
