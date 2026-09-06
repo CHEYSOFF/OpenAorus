@@ -62,17 +62,28 @@ public sealed class AppServices
 
     /// <summary>Re-applies the persisted fan mode, charge limit and lighting (startup, resume, --apply).
     /// Attempts all three even if one fails, so a fan-write failure never strands the saved charge limit
-    /// or the saved lighting unrestored. A machine with no keyboard simply skips the lighting step.</summary>
+    /// or the saved lighting unrestored. A machine with no keyboard simply skips the lighting step.
+    /// A model the profile table does not recognise skips only the two WMI halves.</summary>
     public async Task<WmiResult> ApplySavedAsync()
     {
-        if (!Profile.CanWrite) return WmiResult.Fail("read-only model");
-
-        var fans = await Fans.ApplyAsync(Settings.Mode, Settings.FixedPercent, Settings.ToCurve());
-        var battery = Battery.SetLimit(Settings.ChargeLimitEnabled, Settings.ChargeStopPercent);
-
         var errors = new List<string>();
-        if (!fans.Success) errors.Add($"fan mode: {fans.Error}");
-        if (!battery.Success) errors.Add($"charge limit: {battery.Error}");
+
+        if (Profile.CanWrite)
+        {
+            var fans = await Fans.ApplyAsync(Settings.Mode, Settings.FixedPercent, Settings.ToCurve());
+            var battery = Battery.SetLimit(Settings.ChargeLimitEnabled, Settings.ChargeStopPercent);
+            if (!fans.Success) errors.Add($"fan mode: {fans.Error}");
+            if (!battery.Success) errors.Add($"charge limit: {battery.Error}");
+        }
+        else
+        {
+            // Only the WMI writes are withheld on an unrecognised model: the duty scale is a
+            // per-model guess there, and driving the fans off a wrong one is the risk the
+            // read-only rule exists for. Lighting is HID - no elevation, no model profile,
+            // nothing model-specific to get wrong - and unrecognised models are the common
+            // case, so gating it here would leave most owners with no lighting restore at all.
+            errors.Add("read-only model");
+        }
 
         if (KeyboardPresent)
         {

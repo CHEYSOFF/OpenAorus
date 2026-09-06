@@ -68,9 +68,13 @@ public partial class MainViewModel : ObservableObject
     {
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         _poller.Start();
+        // Applied on every model, not just writable ones: the saved lighting is restored even
+        // where the fan and charge-limit writes are withheld. On a read-only model the result
+        // then always carries "read-only model", which is the expected state the model banner
+        // already explains - reporting it here as a startup failure would be noise.
+        var r = await _s.ApplySavedAsync();
         if (CanWrite)
         {
-            var r = await _s.ApplySavedAsync();
             StatusLine = r.Success ? $"Applied {SelectedMode} at startup" : $"Startup apply failed: {r.Error}";
             if (!r.Success) { _bannerState.ReportFailure(r.Error!); SyncBanner(); }
         }
@@ -99,13 +103,16 @@ public partial class MainViewModel : ObservableObject
         // IsBusy also guards against a mode click landing during the delay below, and against Windows
         // firing PowerModes.Resume twice for a single wake - both would otherwise race a second write
         // sequence against the controller alongside this one.
-        if (e.Mode != PowerModes.Resume || !CanWrite || IsBusy) return;
+        if (e.Mode != PowerModes.Resume || IsBusy) return;
         IsBusy = true;
         try
         {
             await Task.Delay(3000); // let the EC and WMI provider wake up
+            // Same reasoning as the startup apply: a read-only model still gets its lighting
+            // back after a wake, and its expected "read-only model" result is not a status line.
             var r = await _s.ApplySavedAsync();
-            StatusLine = r.Success ? $"Re-applied {SelectedMode} after resume" : $"Resume apply failed: {r.Error}";
+            if (CanWrite)
+                StatusLine = r.Success ? $"Re-applied {SelectedMode} after resume" : $"Resume apply failed: {r.Error}";
         }
         finally { IsBusy = false; }
     }

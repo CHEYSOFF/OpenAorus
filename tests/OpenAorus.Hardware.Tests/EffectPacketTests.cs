@@ -34,6 +34,60 @@ public class EffectPacketTests
         [LightEffect.Custom] = (0, 0),
     };
 
+    /// <summary>
+    /// What each effect's slice must contain under <see cref="AllFieldsNonZero"/>, transcribed by
+    /// hand from the "Configuration buffers, by shape" list in docs/research/ione-keyboard-protocol.md.
+    /// Under that parameter set every field encodes to a distinct value, so each shape has exactly
+    /// one possible byte sequence: speed 0x07, random 0x01, direction 0x03 (0x02 for Flow, which
+    /// swaps up and down), colour 11 22 33, second colour 44 55 66.
+    ///
+    /// Deliberately literal rather than computed from <see cref="EffectPacket"/>: a test that
+    /// re-derives the bytes from the code under test cannot disagree with it.
+    /// </summary>
+    private static readonly Dictionary<LightEffect, byte[]> DocumentedSliceContents = new()
+    {
+        // [0x00, R, G, B]
+        [LightEffect.Static] = new byte[] { 0x00, 0x11, 0x22, 0x33 },
+
+        // Colour + speed: [speed, mode?, R, G, B]. The second byte is a firmware mode selector
+        // this driver does not know how to set, so over a zeroed block it stays 0.
+        [LightEffect.Breathing] = new byte[] { 0x07, 0x00, 0x11, 0x22, 0x33 },
+        [LightEffect.Ripple] = new byte[] { 0x07, 0x00, 0x11, 0x22, 0x33 },
+
+        // Colour + speed + random: [speed, random, R, G, B]
+        [LightEffect.Firework] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33 },
+        [LightEffect.Rain] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33 },
+        [LightEffect.Trigger] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33 },
+        [LightEffect.Pulse] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33 },
+        [LightEffect.StarShining] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33 },
+        [LightEffect.Cross] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33 },
+
+        // Speed + direction only: [speed, direction]. Flow swaps the up and down codes.
+        [LightEffect.Flow] = new byte[] { 0x07, 0x02 },
+        [LightEffect.Spiral] = new byte[] { 0x07, 0x03 },
+
+        // Speed only: [speed]
+        [LightEffect.Cycling] = new byte[] { 0x07 },
+
+        // Wave: [speed, random, direction, R, G, B]
+        [LightEffect.Wave] = new byte[] { 0x07, 0x01, 0x03, 0x11, 0x22, 0x33 },
+
+        // Radar is the one effect the shape list omits. Its 6-byte gap in the offset table rules
+        // out the 5-byte colour + speed + random shape and leaves Wave's, which is what we send.
+        [LightEffect.Radar] = new byte[] { 0x07, 0x01, 0x03, 0x11, 0x22, 0x33 },
+
+        // Two colours: [speed, random, (direction), R1, G1, B1, R2, G2, B2]. The direction byte is
+        // parenthesised in the document; the offset table settles it - 9 bytes of gap for
+        // Dragonstrike and Crash carry it, the 8 for Bloom and Merge cannot.
+        [LightEffect.Dragonstrike] = new byte[] { 0x07, 0x01, 0x03, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 },
+        [LightEffect.Crash] = new byte[] { 0x07, 0x01, 0x03, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 },
+        [LightEffect.Bloom] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 },
+        [LightEffect.Merge] = new byte[] { 0x07, 0x01, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 },
+
+        // Custom: no configuration bytes; the colours travel in their own reports.
+        [LightEffect.Custom] = Array.Empty<byte>(),
+    };
+
     public static TheoryData<LightEffect> EveryEffect
     {
         get
@@ -76,6 +130,20 @@ public class EffectPacketTests
             Assert.True(packet[i] == 0,
                 $"{effect} wrote 0x{packet[i]:X2} at byte {i}, outside its slice [{from}, {to}).");
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(EveryEffect))]
+    public void An_effect_fills_its_own_slice_with_the_documented_shape(LightEffect effect)
+    {
+        // The companion to An_effect_writes_only_inside_its_own_slice: that one proves nothing
+        // spills out of the slice, this one proves the slice is actually filled. Without it,
+        // writing no configuration bytes at all is indistinguishable from writing the right ones.
+        var (offset, length) = DocumentedSlices[effect];
+        var packet = EffectPacket.Build(AllFieldsNonZero(effect));
+
+        var from = 13 + offset;
+        Assert.Equal(DocumentedSliceContents[effect], packet[from..(from + length)]);
     }
 
     [Theory]
@@ -256,6 +324,25 @@ public class EffectPacketTests
         Assert.Equal(0, packet[at + 1]);
     }
 
+    [Theory]
+    [InlineData(LightEffect.Breathing)]
+    [InlineData(LightEffect.Ripple)]
+    public void Patching_leaves_the_unidentified_mode_byte_exactly_as_the_keyboard_had_it(LightEffect effect)
+    {
+        // The mode selector belongs to the firmware, so on the read-modify-write path it is not
+        // ours to clear either: whatever the keyboard (or Gigabyte's software) stored must survive.
+        var at = 13 + DocumentedSlices[effect].Offset;
+        var existing = new byte[KeyboardHid.ReportLength];
+        existing[at + 1] = 0x5A;
+
+        var packet = EffectPacket.Build(AllFieldsNonZero(effect), existing);
+
+        Assert.Equal(0x5A, packet[at + 1]);
+        // ...while the bytes that are ours still get written.
+        Assert.Equal(0x07, packet[at]);
+        Assert.Equal(new byte[] { 0x11, 0x22, 0x33 }, packet[(at + 2)..(at + 5)]);
+    }
+
     [Fact]
     public void Flow_swaps_the_up_and_down_direction_codes()
     {
@@ -278,11 +365,14 @@ public class EffectPacketTests
     }
 
     [Theory]
-    [InlineData(LightEffect.Static, 0xFF)]
-    [InlineData(LightEffect.StarShining, 0xFF)]
-    [InlineData(LightEffect.Breathing, 0x00)]
-    public void Byte_eleven_carries_the_marker_only_for_static_and_star_shining(LightEffect effect, int marker)
-        => Assert.Equal(marker, Build(effect)[11]);
+    [MemberData(nameof(EveryEffect))]
+    public void Byte_eleven_carries_the_marker_only_for_static_and_star_shining(LightEffect effect)
+    {
+        // Over every effect, not a sample: "only" is the whole claim, and three cases could not
+        // catch a fourth effect quietly joining the marked set.
+        var expected = effect is LightEffect.Static or LightEffect.StarShining ? 0xFF : 0x00;
+        Assert.Equal(expected, Build(effect)[11]);
+    }
 
     [Fact]
     public void Bloom_packs_both_colours_at_offset_two_and_five_like_merge()

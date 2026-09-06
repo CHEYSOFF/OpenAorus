@@ -223,7 +223,11 @@ public static class EffectPacket
                 // not the random flag. Random travels across effect switches in one
                 // EffectParameters record, so it must not leak into that selector here.
                 packet[at] = speed;
-                packet[at + 1] = SupportsRandom(p.Effect) ? random : (byte)0;
+                // Nor may it be cleared: a byte this driver cannot set is a byte it must carry
+                // through untouched, or a read-modify-write destroys the mode the firmware (or
+                // Gigabyte's software) had stored. Over the zeroed block the one-argument Build
+                // supplies, leaving it alone still yields 0.
+                if (SupportsRandom(p.Effect)) packet[at + 1] = random;
                 WriteColor(packet, at + 2, p.Color);
                 break;
         }

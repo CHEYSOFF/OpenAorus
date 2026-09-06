@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAorus.Hardware\OpenAorus.Hardware.csproj" />
+    <!-- AppServices is the one piece of startup orchestration that cannot live in the hardware
+         library; referenced here so its read-only/lighting behaviour is covered like the rest. -->
+    <ProjectReference Include="..\..\src\OpenAorus.App\OpenAorus.App.csproj" />
   </ItemGroup>
 
   <!-- The recovered key orders are test data: KeyLayoutTests compares the C# arrays
