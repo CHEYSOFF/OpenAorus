@@ -96,6 +96,31 @@ public class XamlResourceTests
     }
 
     /// <summary>
+    /// The converters reach for their brushes with <c>FindResource</c> at run time rather than
+    /// through markup, so the check above cannot see them. That call throws rather than
+    /// returning null on a bad key, and it runs while a banner is being painted - the moment
+    /// something has already gone wrong and the owner is being told about it.
+    /// </summary>
+    [Fact]
+    public void Every_resource_the_converters_look_up_at_run_time_is_defined_in_the_theme()
+    {
+        var source = Path.Combine(XamlDirectory, "Converters.cs.txt");
+        Assert.True(File.Exists(source), $"no converter source at {source}");
+
+        var keys = Regex.Matches(File.ReadAllText(source), @"FindResource\(""([^""]+)""\)")
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        // A rename that stopped the converters using FindResource would otherwise leave this
+        // looping over nothing, which is the failure this whole file exists to avoid.
+        Assert.NotEmpty(keys);
+
+        var theme = KeysDefinedIn(ThemeFile);
+        Assert.Empty(keys.Where(k => !theme.Contains(k)));
+    }
+
+    /// <summary>
     /// The hex boxes have to push every keystroke into the view model. WPF's default for
     /// <c>TextBox.Text</c> is <c>LostFocus</c>, and the thing the owner clicks next is a key in
     /// the picture, which is not a focus scope - so a typed colour would be dropped on the floor

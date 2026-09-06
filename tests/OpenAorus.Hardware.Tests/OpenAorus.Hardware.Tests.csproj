@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -36,6 +36,7 @@
   <ItemGroup>
     <None Include="..\..\src\OpenAorus.App\Views\*.xaml" CopyToOutputDirectory="PreserveNewest" Link="xaml\Views\%(Filename)%(Extension)" />
     <None Include="..\..\src\OpenAorus.App\Themes\Dark.xaml" CopyToOutputDirectory="PreserveNewest" Link="xaml\Themes\%(Filename)%(Extension)" />
+    <None Include="..\..\src\OpenAorus.App\Converters.cs" CopyToOutputDirectory="PreserveNewest" Link="xaml\Converters.cs.txt" />
   </ItemGroup>
 
 </Project>
