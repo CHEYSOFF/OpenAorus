@@ -73,6 +73,29 @@
         <Setter Property="Foreground" Value="{StaticResource Fg}"/>
         <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
     </Style>
+
+    <!-- The counterweight to the style above, hung on a template's ContentPresenter.
+         A ContentPresenter builds its own TextBlock for string content, and that style
+         then paints it Fg: a style setter beats the Foreground a control merely passes
+         down by inheritance, so a template foreground had no way of reaching its own
+         label. Every AccentFg, FgMuted, FgDim and Err below was inert for that reason -
+         the selected fan mode read near-white on the orange at 2.3:1 while the markup
+         asked for the near-black that measures 6.6:1 there.
+         Resource lookup starts at the element, so an implicit style this close to the
+         generated TextBlock outranks the one in the theme root, and the value it sets is
+         the foreground the control did pass down - which keeps every trigger live,
+         because inheritance re-flows when the trigger changes the control's Foreground.
+         CaptionButton solves this by owning its TextBlock outright; these templates
+         cannot, because their content is not always a string and one of them still has
+         to recognise an access key. -->
+    <ResourceDictionary x:Key="ContentTakesControlForeground">
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground"
+                    Value="{Binding Path=(TextElement.Foreground), RelativeSource={RelativeSource TemplatedParent}}"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        </Style>
+    </ResourceDictionary>
+
     <Style x:Key="Muted" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="Foreground" Value="{StaticResource FgMuted}"/>
         <Setter Property="FontSize" Value="11"/>
@@ -255,6 +278,7 @@
                     CornerRadius="6" SnapsToDevicePixels="True"/>
             <Border x:Name="Veil" CornerRadius="6" Background="{StaticResource HoverVeil}" Opacity="0"/>
             <ContentPresenter Margin="{TemplateBinding Padding}"
+                              Resources="{StaticResource ContentTakesControlForeground}"
                               HorizontalAlignment="Center" VerticalAlignment="Center"
                               RecognizesAccessKey="True"/>
         </Grid>
@@ -348,7 +372,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Grid Background="Transparent">
-                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center"/>
+                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center"
+                                          Resources="{StaticResource ContentTakesControlForeground}"/>
                         <Border Height="2" CornerRadius="1" VerticalAlignment="Bottom"
                                 Background="{TemplateBinding BorderBrush}" SnapsToDevicePixels="True"/>
                     </Grid>
@@ -747,7 +772,8 @@
                 <ControlTemplate TargetType="DataGridColumnHeader">
                     <Border Background="{TemplateBinding Background}" BorderThickness="0,0,0,1"
                             BorderBrush="{StaticResource Divider}" SnapsToDevicePixels="True">
-                        <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                        <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
+                                          Resources="{StaticResource ContentTakesControlForeground}"/>
                     </Border>
                 </ControlTemplate>
             </Setter.Value>
