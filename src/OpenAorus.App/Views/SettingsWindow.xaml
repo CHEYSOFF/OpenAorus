@@ -1,60 +1,78 @@
 <Window x:Class="OpenAorus.App.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:OpenAorus.App.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Style="{StaticResource AppWindow}"
         Title="OpenAorus settings" Width="440" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
-    <StackPanel Margin="16,14,16,14" IsEnabled="{Binding CanWrite}">
-        <Border Style="{StaticResource CardStyle}">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Content="Toggle" VerticalAlignment="Center" Margin="12,0,0,0"
-                        Command="{Binding ToggleStartupCommand}"/>
-                <StackPanel>
-                    <CheckBox Content="Start with Windows (no UAC prompt)" IsChecked="{Binding StartWithWindows, Mode=OneWay}" IsHitTestVisible="False"/>
-                    <TextBlock Style="{StaticResource Body}" Margin="25,4,0,0"
-                               Text="Creates a logon task that runs OpenAorus elevated in the tray."/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
-        <Border Style="{StaticResource CardStyle}">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Content="Toggle" VerticalAlignment="Center" Margin="12,0,0,0"
-                        Command="{Binding ToggleTakeoverCommand}"/>
-                <StackPanel>
-                    <CheckBox Content="Take over from Gigabyte Control Center" IsChecked="{Binding GccTakenOver, Mode=OneWay}" IsHitTestVisible="False"/>
-                    <TextBlock Style="{StaticResource Body}" Margin="25,4,0,0"
-                               Text="Disables GCC's logon task, AorusFusion autostart and SMV4_Service, and closes GCC processes. Reversible. GCC stays installed so its WMI schema keeps working."/>
-                    <TextBlock Text="GCC is currently running." Foreground="{StaticResource Warn}" Margin="25,6,0,0">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding GccActive}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </StackPanel>
-            </DockPanel>
-        </Border>
-        <Border Style="{StaticResource CardStyle}">
-            <StackPanel>
-                <TextBlock Style="{StaticResource CardTitle}" Text="Sensor polling"/>
-                <UniformGrid Columns="3">
-                    <StackPanel Margin="0,0,8,0">
-                        <TextBlock Style="{StaticResource Muted}" Text="Window open (ms)" Margin="0,0,0,4"/>
-                        <TextBox Text="{Binding PollVisibleMs}"/>
+    <!-- Same frame treatment as the main window; see MainWindow.xaml for why it is done
+         this way. NoResize, so no minimise button - which is what the Windows frame gave
+         this dialog too. -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="{StaticResource CaptionHeight}"
+                            ResizeBorderThickness="0"
+                            GlassFrameThickness="0,0,0,1"
+                            CornerRadius="0"
+                            UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+    <DockPanel>
+        <!-- Outside the IsEnabled scope below on purpose: on a model this app cannot write
+             to, everything in the dialog is disabled, and a close button that went with it
+             would leave the owner in a modal dialog with no way out of it. -->
+        <views:CaptionBar DockPanel.Dock="Top" CanMinimise="False"/>
+        <StackPanel Margin="16,8,16,14" IsEnabled="{Binding CanWrite}">
+            <Border Style="{StaticResource CardStyle}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Toggle" VerticalAlignment="Center" Margin="12,0,0,0"
+                            Command="{Binding ToggleStartupCommand}"/>
+                    <StackPanel>
+                        <CheckBox Content="Start with Windows (no UAC prompt)" IsChecked="{Binding StartWithWindows, Mode=OneWay}" IsHitTestVisible="False"/>
+                        <TextBlock Style="{StaticResource Body}" Margin="25,4,0,0"
+                                   Text="Creates a logon task that runs OpenAorus elevated in the tray."/>
                     </StackPanel>
-                    <StackPanel Margin="0,0,8,0">
-                        <TextBlock Style="{StaticResource Muted}" Text="In tray (ms)" Margin="0,0,0,4"/>
-                        <TextBox Text="{Binding PollHiddenMs}"/>
+                </DockPanel>
+            </Border>
+            <Border Style="{StaticResource CardStyle}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Toggle" VerticalAlignment="Center" Margin="12,0,0,0"
+                            Command="{Binding ToggleTakeoverCommand}"/>
+                    <StackPanel>
+                        <CheckBox Content="Take over from Gigabyte Control Center" IsChecked="{Binding GccTakenOver, Mode=OneWay}" IsHitTestVisible="False"/>
+                        <TextBlock Style="{StaticResource Body}" Margin="25,4,0,0"
+                                   Text="Disables GCC's logon task, AorusFusion autostart and SMV4_Service, and closes GCC processes. Reversible. GCC stays installed so its WMI schema keeps working."/>
+                        <TextBlock Text="GCC is currently running." Foreground="{StaticResource Warn}" Margin="25,6,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding GccActive}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
-                    <Button Content="Save" VerticalAlignment="Bottom" Command="{Binding SaveIntervalsCommand}"/>
-                </UniformGrid>
-            </StackPanel>
-        </Border>
-        <TextBlock Style="{StaticResource Muted}" Text="{Binding SettingsPath}" TextTrimming="CharacterEllipsis"
-                   ToolTip="{Binding SettingsPath}" Margin="2,0,0,0"/>
-        <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource Fg}" Text="{Binding Message}" Margin="2,8,0,0"/>
-    </StackPanel>
+                </DockPanel>
+            </Border>
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Sensor polling"/>
+                    <UniformGrid Columns="3">
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource Muted}" Text="Window open (ms)" Margin="0,0,0,4"/>
+                            <TextBox Text="{Binding PollVisibleMs}"/>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource Muted}" Text="In tray (ms)" Margin="0,0,0,4"/>
+                            <TextBox Text="{Binding PollHiddenMs}"/>
+                        </StackPanel>
+                        <Button Content="Save" VerticalAlignment="Bottom" Command="{Binding SaveIntervalsCommand}"/>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+            <TextBlock Style="{StaticResource Muted}" Text="{Binding SettingsPath}" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding SettingsPath}" Margin="2,0,0,0"/>
+            <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource Fg}" Text="{Binding Message}" Margin="2,8,0,0"/>
+        </StackPanel>
+    </DockPanel>
 </Window>

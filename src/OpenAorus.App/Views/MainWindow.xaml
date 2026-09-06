@@ -3,9 +3,24 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:app="clr-namespace:OpenAorus.App"
         xmlns:views="clr-namespace:OpenAorus.App.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Style="{StaticResource AppWindow}"
         Title="OpenAorus" Width="460" Height="560" ResizeMode="CanMinimize"
         WindowStartupLocation="Manual" ShowInTaskbar="False" Topmost="False">
+    <!-- The window keeps its real frame and only lends the top CaptionHeight of the client
+         area to our own bar. Dragging, the system menu on right-click, Alt+Space and the
+         refusal to maximise on a double-click are then all Windows' own, unchanged.
+         ResizeBorderThickness is 0 because CanMinimize means there is nothing to resize, and
+         a live resize border there would only put resize cursors on edges that do not move.
+         The 1 px of glass frame along the bottom is what keeps the drop shadow: it is
+         covered by the window's own background, so nothing of it is ever seen. -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="{StaticResource CaptionHeight}"
+                            ResizeBorderThickness="0"
+                            GlassFrameThickness="0,0,0,1"
+                            CornerRadius="0"
+                            UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
     <Window.Resources>
         <app:EnumEqualsConverter x:Key="EnumEq"/>
         <app:EnumEqualsVisibilityConverter x:Key="EnumVis"/>
@@ -13,168 +28,171 @@
         <app:BannerVisibleConverter x:Key="BannerVis"/>
         <BooleanToVisibilityConverter x:Key="BoolVis"/>
     </Window.Resources>
-    <Grid Margin="16,14,16,12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <DockPanel>
+        <views:CaptionBar DockPanel.Dock="Top" CloseHint="Close to tray"/>
+        <Grid Margin="16,8,16,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <!-- Banner. The kind colour is a rule down the edge rather than a fill: filled
-             amber or red behind body text never clears AA at a readable size, and a
-             solid warning slab is the loudest thing a quiet window can contain. -->
-        <Border Grid.Row="0" CornerRadius="6" Padding="12,9" Margin="0,0,0,14"
-                Background="{StaticResource Card}" BorderThickness="3,0,0,0"
-                BorderBrush="{Binding Banner, Converter={StaticResource BannerBrush}}"
-                Visibility="{Binding Banner, Converter={StaticResource BannerVis}}">
-            <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" FontSize="12" LineHeight="17"/>
-        </Border>
+            <!-- Banner. The kind colour is a rule down the edge rather than a fill: filled
+                 amber or red behind body text never clears AA at a readable size, and a
+                 solid warning slab is the loudest thing a quiet window can contain. -->
+            <Border Grid.Row="0" CornerRadius="6" Padding="12,9" Margin="0,0,0,14"
+                    Background="{StaticResource Card}" BorderThickness="3,0,0,0"
+                    BorderBrush="{Binding Banner, Converter={StaticResource BannerBrush}}"
+                    Visibility="{Binding Banner, Converter={StaticResource BannerVis}}">
+                <TextBlock Text="{Binding BannerText}" TextWrapping="Wrap" FontSize="12" LineHeight="17"/>
+            </Border>
 
-        <!-- Section switch. Hidden whole rather than showing a lone Cooling button: with no
-             keyboard there is only one section, and a switch with nothing to switch to is noise.
-             Drawn as tabs on a rule, not as filled buttons - moving between sections is a
-             different kind of act from setting a fan mode, and the two rows read differently. -->
-        <Grid Grid.Row="1" Margin="0,0,0,14"
-              Visibility="{Binding LightingAvailable, Converter={StaticResource BoolVis}}">
-            <Border Height="1" VerticalAlignment="Bottom" Background="{StaticResource Divider}"/>
-            <StackPanel Orientation="Horizontal">
-                <Button Style="{StaticResource NavButton}" Content="Cooling"
-                        Tag="{Binding SelectedSection, Converter={StaticResource EnumEq}, ConverterParameter=Cooling}"
-                        Command="{Binding SelectSectionCommand}" CommandParameter="{x:Static app:AppSections.Cooling}"/>
-                <Button Style="{StaticResource NavButton}" Content="Lighting"
-                        Tag="{Binding SelectedSection, Converter={StaticResource EnumEq}, ConverterParameter=Lighting}"
-                        Command="{Binding SelectSectionCommand}" CommandParameter="{x:Static app:AppSections.Lighting}"/>
-            </StackPanel>
-        </Grid>
-
-        <!-- Both sections scroll. The per-key editor appears and disappears with the Custom
-             effect and the curve editor with the Custom fan mode; the window is placed against
-             the tray corner and cannot grow to follow either. Sizing the window to the tallest
-             state instead is what left the Cooling page with 300 px of empty card. -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                      Focusable="False" Padding="0,0,2,0">
-            <Grid>
-                <!-- Cooling. A ScrollViewer stretches content shorter than its viewport, so the
-                     star row is real slack: on the four modes that need no controls of their own
-                     it opens up between the fans and the battery, which are different subjects,
-                     and on the Custom curve it closes to nothing. The negative bottom margin
-                     cancels the last card's own gap against the footer rule. -->
-                <Grid Margin="0,0,0,-10"
-                      Visibility="{Binding SelectedSection, Converter={StaticResource EnumVis}, ConverterParameter=Cooling}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*" MinHeight="10"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Style="{StaticResource GroupLabel}" Text="Fan mode"/>
-                    <!-- The negative right margin cancels the trailing gap on the last chip, so
-                         the row ends flush with the cards below it. -->
-                    <UniformGrid Grid.Row="1" Columns="6" Margin="0,0,-4,12" IsEnabled="{Binding CanWrite}">
-                        <Button Style="{StaticResource ModeButton}" Content="Quiet"
-                                Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Quiet}"
-                                Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Quiet}"/>
-                        <Button Style="{StaticResource ModeButton}" Content="Normal"
-                                Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Normal}"
-                                Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Normal}"/>
-                        <Button Style="{StaticResource ModeButton}" Content="Gaming"
-                                Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Gaming}"
-                                Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Gaming}"/>
-                        <Button Style="{StaticResource ModeButton}" Content="Turbo"
-                                Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Turbo}"
-                                Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Turbo}"/>
-                        <Button Style="{StaticResource ModeButton}" Content="Fixed"
-                                Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Fixed}"
-                                Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Fixed}"/>
-                        <Button Style="{StaticResource ModeButton}" Content="Custom"
-                                Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Custom}"
-                                Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Custom}"/>
-                    </UniformGrid>
-
-                    <!-- Context panel: the Fixed slider, the curve editor and the mode descriptions -->
-                    <Border Grid.Row="2" Style="{StaticResource CardStyle}">
-                        <ContentControl x:Name="ContextHost"/>
-                    </Border>
-
-                    <!-- Sensors. Number and unit are separate runs so the number can carry the
-                         size, and the two temperatures are fenced off from the three fan
-                         readings - five equal columns read as one undifferentiated strip. -->
-                    <Border Grid.Row="3" Style="{StaticResource CardStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="1.0*"/>
-                                <ColumnDefinition Width="1.0*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="1.15*"/>
-                                <ColumnDefinition Width="1.15*"/>
-                                <ColumnDefinition Width="0.8*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Style="{StaticResource Muted}" Text="CPU"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Sensors.CpuTemp}"/>
-                                    <TextBlock Style="{StaticResource MetricUnit}" Text="°C"/>
-                                </StackPanel>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Style="{StaticResource Muted}" Text="GPU"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Sensors.GpuTemp}"/>
-                                    <TextBlock Style="{StaticResource MetricUnit}" Text="°C"/>
-                                </StackPanel>
-                            </StackPanel>
-                            <Border Grid.Column="2" Width="1" Margin="6,3,14,3" Background="{StaticResource Divider}"/>
-                            <StackPanel Grid.Column="3">
-                                <TextBlock Style="{StaticResource Muted}" Text="Fan 1"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Style="{StaticResource MetricValueSmall}" Text="{Binding Sensors.Fan1Rpm}"/>
-                                    <TextBlock Style="{StaticResource MetricUnit}" Text="rpm"/>
-                                </StackPanel>
-                            </StackPanel>
-                            <StackPanel Grid.Column="4">
-                                <TextBlock Style="{StaticResource Muted}" Text="Fan 2"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Style="{StaticResource MetricValueSmall}" Text="{Binding Sensors.Fan2Rpm}"/>
-                                    <TextBlock Style="{StaticResource MetricUnit}" Text="rpm"/>
-                                </StackPanel>
-                            </StackPanel>
-                            <StackPanel Grid.Column="5">
-                                <TextBlock Style="{StaticResource Muted}" Text="Duty"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Style="{StaticResource MetricValueSmall}" Text="{Binding Sensors.Fan1DutyPercent}"/>
-                                    <TextBlock Style="{StaticResource MetricUnit}" Margin="1,0,0,2" Text="%"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <ContentControl Grid.Row="5" x:Name="BatteryHost"/>
-                </Grid>
-
-                <!-- Lighting -->
-                <ContentControl x:Name="LightingHost"
-                                Visibility="{Binding SelectedSection, Converter={StaticResource EnumVis}, ConverterParameter=Lighting}"/>
-            </Grid>
-        </ScrollViewer>
-
-        <!-- Footer -->
-        <Border Grid.Row="3" Margin="0,12,0,0" Padding="0,10,0,0"
-                BorderThickness="0,1,0,0" BorderBrush="{StaticResource Divider}">
-            <DockPanel LastChildFill="True">
-                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" VerticalAlignment="Center"
-                        FontFamily="Segoe MDL2 Assets" FontSize="14" Content="&#xE713;"
-                        Click="Settings_Click" ToolTip="Settings" AutomationProperties.Name="Settings"/>
-                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" VerticalAlignment="Center"
-                        Content="Diagnostics" Margin="0,0,2,0" Command="{Binding ExportDiagnosticsCommand}"/>
-                <StackPanel VerticalAlignment="Center" Margin="2,0,8,0">
-                    <TextBlock Style="{StaticResource Muted}" Text="{Binding ModelLine}" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Style="{StaticResource Muted}" Text="{Binding StatusLine}"
-                               TextTrimming="CharacterEllipsis"/>
+            <!-- Section switch. Hidden whole rather than showing a lone Cooling button: with no
+                 keyboard there is only one section, and a switch with nothing to switch to is noise.
+                 Drawn as tabs on a rule, not as filled buttons - moving between sections is a
+                 different kind of act from setting a fan mode, and the two rows read differently. -->
+            <Grid Grid.Row="1" Margin="0,0,0,14"
+                  Visibility="{Binding LightingAvailable, Converter={StaticResource BoolVis}}">
+                <Border Height="1" VerticalAlignment="Bottom" Background="{StaticResource Divider}"/>
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource NavButton}" Content="Cooling"
+                            Tag="{Binding SelectedSection, Converter={StaticResource EnumEq}, ConverterParameter=Cooling}"
+                            Command="{Binding SelectSectionCommand}" CommandParameter="{x:Static app:AppSections.Cooling}"/>
+                    <Button Style="{StaticResource NavButton}" Content="Lighting"
+                            Tag="{Binding SelectedSection, Converter={StaticResource EnumEq}, ConverterParameter=Lighting}"
+                            Command="{Binding SelectSectionCommand}" CommandParameter="{x:Static app:AppSections.Lighting}"/>
                 </StackPanel>
-            </DockPanel>
-        </Border>
-    </Grid>
+            </Grid>
+
+            <!-- Both sections scroll. The per-key editor appears and disappears with the Custom
+                 effect and the curve editor with the Custom fan mode; the window is placed against
+                 the tray corner and cannot grow to follow either. Sizing the window to the tallest
+                 state instead is what left the Cooling page with 300 px of empty card. -->
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          Focusable="False" Padding="0,0,2,0">
+                <Grid>
+                    <!-- Cooling. A ScrollViewer stretches content shorter than its viewport, so the
+                         star row is real slack: on the four modes that need no controls of their own
+                         it opens up between the fans and the battery, which are different subjects,
+                         and on the Custom curve it closes to nothing. The negative bottom margin
+                         cancels the last card's own gap against the footer rule. -->
+                    <Grid Margin="0,0,0,-10"
+                          Visibility="{Binding SelectedSection, Converter={StaticResource EnumVis}, ConverterParameter=Cooling}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*" MinHeight="10"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Style="{StaticResource GroupLabel}" Text="Fan mode"/>
+                        <!-- The negative right margin cancels the trailing gap on the last chip, so
+                             the row ends flush with the cards below it. -->
+                        <UniformGrid Grid.Row="1" Columns="6" Margin="0,0,-4,12" IsEnabled="{Binding CanWrite}">
+                            <Button Style="{StaticResource ModeButton}" Content="Quiet"
+                                    Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Quiet}"
+                                    Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Quiet}"/>
+                            <Button Style="{StaticResource ModeButton}" Content="Normal"
+                                    Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Normal}"
+                                    Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Normal}"/>
+                            <Button Style="{StaticResource ModeButton}" Content="Gaming"
+                                    Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Gaming}"
+                                    Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Gaming}"/>
+                            <Button Style="{StaticResource ModeButton}" Content="Turbo"
+                                    Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Turbo}"
+                                    Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Turbo}"/>
+                            <Button Style="{StaticResource ModeButton}" Content="Fixed"
+                                    Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Fixed}"
+                                    Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Fixed}"/>
+                            <Button Style="{StaticResource ModeButton}" Content="Custom"
+                                    Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Custom}"
+                                    Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Custom}"/>
+                        </UniformGrid>
+
+                        <!-- Context panel: the Fixed slider, the curve editor and the mode descriptions -->
+                        <Border Grid.Row="2" Style="{StaticResource CardStyle}">
+                            <ContentControl x:Name="ContextHost"/>
+                        </Border>
+
+                        <!-- Sensors. Number and unit are separate runs so the number can carry the
+                             size, and the two temperatures are fenced off from the three fan
+                             readings - five equal columns read as one undifferentiated strip. -->
+                        <Border Grid.Row="3" Style="{StaticResource CardStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.0*"/>
+                                    <ColumnDefinition Width="1.0*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="1.15*"/>
+                                    <ColumnDefinition Width="1.15*"/>
+                                    <ColumnDefinition Width="0.8*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Style="{StaticResource Muted}" Text="CPU"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Sensors.CpuTemp}"/>
+                                        <TextBlock Style="{StaticResource MetricUnit}" Text="°C"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Style="{StaticResource Muted}" Text="GPU"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Sensors.GpuTemp}"/>
+                                        <TextBlock Style="{StaticResource MetricUnit}" Text="°C"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <Border Grid.Column="2" Width="1" Margin="6,3,14,3" Background="{StaticResource Divider}"/>
+                                <StackPanel Grid.Column="3">
+                                    <TextBlock Style="{StaticResource Muted}" Text="Fan 1"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource MetricValueSmall}" Text="{Binding Sensors.Fan1Rpm}"/>
+                                        <TextBlock Style="{StaticResource MetricUnit}" Text="rpm"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="4">
+                                    <TextBlock Style="{StaticResource Muted}" Text="Fan 2"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource MetricValueSmall}" Text="{Binding Sensors.Fan2Rpm}"/>
+                                        <TextBlock Style="{StaticResource MetricUnit}" Text="rpm"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="5">
+                                    <TextBlock Style="{StaticResource Muted}" Text="Duty"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource MetricValueSmall}" Text="{Binding Sensors.Fan1DutyPercent}"/>
+                                        <TextBlock Style="{StaticResource MetricUnit}" Margin="1,0,0,2" Text="%"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <ContentControl Grid.Row="5" x:Name="BatteryHost"/>
+                    </Grid>
+
+                    <!-- Lighting -->
+                    <ContentControl x:Name="LightingHost"
+                                    Visibility="{Binding SelectedSection, Converter={StaticResource EnumVis}, ConverterParameter=Lighting}"/>
+                </Grid>
+            </ScrollViewer>
+
+            <!-- Footer -->
+            <Border Grid.Row="3" Margin="0,12,0,0" Padding="0,10,0,0"
+                    BorderThickness="0,1,0,0" BorderBrush="{StaticResource Divider}">
+                <DockPanel LastChildFill="True">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" VerticalAlignment="Center"
+                            FontFamily="Segoe MDL2 Assets" FontSize="14" Content="&#xE713;"
+                            Click="Settings_Click" ToolTip="Settings" AutomationProperties.Name="Settings"/>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" VerticalAlignment="Center"
+                            Content="Diagnostics" Margin="0,0,2,0" Command="{Binding ExportDiagnosticsCommand}"/>
+                    <StackPanel VerticalAlignment="Center" Margin="2,0,8,0">
+                        <TextBlock Style="{StaticResource Muted}" Text="{Binding ModelLine}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Style="{StaticResource Muted}" Text="{Binding StatusLine}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
 </Window>
