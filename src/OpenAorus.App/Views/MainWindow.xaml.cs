@@ -15,6 +15,7 @@ public partial class MainWindow : Window
         DataContext = vm;
         ContextHost.Content = new ContextPanel { DataContext = vm };
         BatteryHost.Content = new BatteryPanel { DataContext = vm.Battery };
+        LightingHost.Content = new LightingPanel { DataContext = vm.Lighting };
         IsVisibleChanged += (_, _) => _vm.IsWindowVisible = IsVisible;
     }
 

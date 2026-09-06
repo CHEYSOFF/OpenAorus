@@ -22,16 +22,28 @@ public sealed class SettingsStore
     /// owner, since a silent reset can strand a takeover with no route back.</summary>
     public bool LastLoadWasReset { get; private set; }
 
+    /// <summary>True after a call to <see cref="Load"/> that read the file fine but had to replace
+    /// values inside it that the hardware layer would not accept - see <see cref="LightingSettings.Repair"/>.
+    /// The rest of the file survives, so this is a milder notice than <see cref="LastLoadWasReset"/>,
+    /// but the owner still had settings changed under them and is told for the same reason.</summary>
+    public bool LastLoadRepaired { get; private set; }
+
     public SettingsStore(string path) => Path = path;
 
     public AppSettings Load()
     {
         LastLoadWasReset = false;
+        LastLoadRepaired = false;
         if (!File.Exists(Path)) return new AppSettings();
         try
         {
             var json = File.ReadAllText(Path);
-            return JsonSerializer.Deserialize<AppSettings>(json, Options) ?? new AppSettings();
+            // Valid JSON that is not an object (a bare "null", say) deserializes to null. Treating
+            // that as readable would silently drop every saved setting with nothing said about it.
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, Options)
+                ?? throw new JsonException("The settings file holds no settings object.");
+            LastLoadRepaired = settings.Lighting.Repair();
+            return settings;
         }
         catch (Exception)
         {

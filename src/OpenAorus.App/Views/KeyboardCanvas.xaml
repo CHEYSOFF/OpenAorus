@@ -1,0 +1,118 @@
+<UserControl x:Class="OpenAorus.App.Views.KeyboardCanvas"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="clr-namespace:OpenAorus.App"
+             xmlns:views="clr-namespace:OpenAorus.App.Views">
+    <UserControl.Resources>
+        <app:SelectionBrushConverter x:Key="SelBrush"/>
+        <app:ReadableForegroundConverter x:Key="KeyFg"/>
+        <DataTemplate x:Key="SwatchTemplate">
+            <Border Width="46" Height="12" CornerRadius="2" BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
+                <Border.Background><SolidColorBrush Color="{Binding}"/></Border.Background>
+            </Border>
+        </DataTemplate>
+        <!-- WPF's stock focus visual is a black dotted rectangle, which is invisible against the
+             dark theme and doubly so against an unpainted key, which is black. Drawn outside the
+             key so it does not fight the accent outline that marks the key painted last. -->
+        <Style x:Key="KeyFocusVisual">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="-2" RadiusX="3" RadiusY="3" StrokeThickness="1.5"
+                                   Stroke="{StaticResource Accent}" SnapsToDevicePixels="True"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- A drag paints every key it crosses, so the pointer is captured here for the length of the
+         stroke and the keys under it are found by hit-testing each reported position. The release
+         has then to be caught wherever it lands: on a key, on the gap between two, on the way out
+         of the picture entirely, or as the capture being taken away from us. -->
+    <StackPanel x:Name="PaintSurface" PreviewMouseLeftButtonUp="Paint_Up" MouseMove="Paint_Move"
+                MouseLeave="Paint_Left" LostMouseCapture="Paint_Lost">
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock DockPanel.Dock="Left" Width="42" VerticalAlignment="Center" Text="Brush"/>
+            <ComboBox DockPanel.Dock="Left" Width="64" ItemsSource="{Binding Swatches}"
+                      SelectedItem="{Binding BrushColor}" ItemTemplate="{StaticResource SwatchTemplate}"
+                      ToolTip="Pick the colour to paint with"/>
+            <!-- PropertyChanged, not the default LostFocus: clicking a key in the picture does not
+                 move focus out of this box, so a typed colour would still be sitting here unread
+                 while the key painted in the colour before it. -->
+            <TextBox DockPanel.Dock="Left" Width="76" Margin="6,0,0,0"
+                     Text="{Binding BrushHex, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Or type it as #RRGGBB"/>
+            <Border DockPanel.Dock="Left" Width="22" Margin="6,0,0,0" CornerRadius="3"
+                    BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
+                <Border.Background><SolidColorBrush Color="{Binding BrushColor}"/></Border.Background>
+            </Border>
+            <TextBlock/>
+        </DockPanel>
+
+        <!-- Scaled to fit rather than scrolled: a numpad the owner has to scroll sideways to reach
+             is the one part of the keyboard they would most easily believe is not there. Down only,
+             so on a wider window the keys stay their natural size instead of being blown up. -->
+        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,0,0,6">
+            <!-- One tab stop for the whole picture, arrows to move inside it. Without this all
+                 101 keys sit in the tab order, so reaching Apply from the brush box means
+                 tabbing across the entire keyboard. -->
+            <ItemsControl ItemsSource="{Binding Blocks}"
+                          KeyboardNavigation.TabNavigation="Once"
+                          KeyboardNavigation.DirectionalNavigation="Contained">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <ItemsControl ItemsSource="{Binding Rows}" Margin="{Binding Indent}" VerticalAlignment="Top">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ItemsControl ItemsSource="{Binding Keys}" Margin="{Binding Indent}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <!-- Focusable and named: the picture is the only way to
+                                                     set a key's colour, so it has to be reachable by tab
+                                                     and readable by a screen reader, not just clickable.
+                                                     KeyFace rather than Border because a Border has no
+                                                     automation peer, and a name on one goes nowhere. -->
+                                                <views:KeyFace Width="{Binding Width}" Height="16" Margin="1" CornerRadius="2"
+                                                               BorderThickness="1" Cursor="Hand"
+                                                               Focusable="True" FocusVisualStyle="{StaticResource KeyFocusVisual}"
+                                                               AutomationProperties.Name="{Binding Tooltip}"
+                                                               BorderBrush="{Binding IsSelected, Converter={StaticResource SelBrush}}"
+                                                               ToolTip="{Binding Tooltip}"
+                                                               MouseLeftButtonDown="Key_Down" KeyDown="Key_Pressed">
+                                                    <views:KeyFace.Background><SolidColorBrush Color="{Binding Color}"/></views:KeyFace.Background>
+                                                    <TextBlock Text="{Binding Caption}" FontSize="8"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Foreground="{Binding Color, Converter={StaticResource KeyFg}}"/>
+                                                </views:KeyFace>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Viewbox>
+
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Apply" Margin="6,0,0,0" Command="{Binding ApplyCommand}"/>
+            <Button DockPanel.Dock="Right" Content="Read" Margin="6,0,0,0" Command="{Binding ReadFromKeyboardCommand}"
+                    ToolTip="Load the colours the keyboard is holding now"/>
+            <Button DockPanel.Dock="Right" Content="Clear" Margin="6,0,0,0" Command="{Binding ClearCommand}"/>
+            <Button DockPanel.Dock="Right" Content="Fill" Command="{Binding FillAllCommand}"/>
+            <TextBlock Style="{StaticResource Muted}" VerticalAlignment="Center" Text="{Binding StatusText}"
+                       TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
+
+        <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
+                   Text="The slot order is recovered, not measured. Paint one key, press Apply, and check that the key that lights is the one you painted. If it is not, set &quot;LayoutOverride&quot; to &quot;EngUs&quot; or &quot;EngUk&quot; in settings.json and restart."/>
+    </StackPanel>
+</UserControl>

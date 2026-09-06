@@ -1,17 +1,21 @@
 # OpenAorus
 
-Open-source, single-executable replacement for the fan, sensor and battery
-features of Gigabyte Control Center on Gigabyte AORUS / AERO laptops.
-Think [G-Helper](https://github.com/seerge/g-helper), but for Gigabyte.
+Open-source, single-executable replacement for the fan, sensor, battery and
+keyboard-lighting features of Gigabyte Control Center on Gigabyte AORUS / AERO
+laptops. Think [G-Helper](https://github.com/seerge/g-helper), but for Gigabyte.
 
-**Status: pre-alpha, v0.1. Unverified on real hardware — see [Verification status](#verification-status) below.**
+**Status: pre-alpha, v0.2. Nothing here is verified on real hardware, neither the
+fan control from v0.1 nor the lighting added in v0.2. See
+[Verification status](#verification-status) below.**
 
 ## Why
 
 Gigabyte Control Center is slow to open, breaks between versions, fights you
 over fan modes ("AI" mode re-applies itself), and paints its own volume OSD on
 top of the Windows one. Everything it does to the fans and battery goes through
-one ACPI-WMI interface that any elevated program can call. So this does.
+one ACPI-WMI interface that any elevated program can call. So this does. The
+keyboard lighting is a separate story: an ordinary USB HID device that answers
+to any program at all, elevated or not.
 
 ## Features (v0.1)
 
@@ -28,17 +32,48 @@ one ACPI-WMI interface that any elevated program can call. So this does.
   whatever fan mode you picked
 - Re-applies your saved mode and charge limit automatically after sleep/resume
 
-Not in v0.1: keyboard RGB, Fn hotkeys, per-app profiles, power limits.
+## Keyboard lighting (v0.2)
+
+- 18 whole-keyboard effects: Static, Breathing, Flow, Firework, Ripple, Rain,
+  Cycling, Trigger, Pulse, Radar, Star Shining, Wave, Cross, Dragonstrike,
+  Bloom, Spiral, Merge and Crash. Each shows only the controls it actually
+  takes, so the colour, second colour, speed, direction and "random colours"
+  boxes appear and disappear as you move through the list
+- Brightness, applied without having to switch away from the current effect
+- Per-key colours painted onto a keyboard-shaped editor, with fill, clear,
+  drag-to-paint, and a Read button that pulls back the 128 colours the keyboard
+  is currently holding
+- Presets: three built in (Off, Warm White, Aorus Orange) plus as many of your
+  own as you save
+- The effect, its parameters, the per-key colours and your presets live in the
+  same `settings.json` as the fan settings, and are re-applied at startup and
+  after sleep/resume
+
+Lighting talks to the keyboard as a plain HID device, so **it needs no
+administrator rights and does not go through WMI at all**. That also means it
+does not need Gigabyte Control Center installed; the fan side still does, for
+the WMI schema (see [Install](#install)). The app as a whole still asks for
+elevation when it launches, because the fan and battery side cannot work
+without it. If GCC is running, its own lighting service can fight over the
+keyboard, which is what the v0.1 takeover switch is for.
+
+If no supported keyboard is found, the Lighting section is not shown and
+nothing else about the app changes.
+
+Still missing: Fn hotkeys, per-app profiles, power limits, and the chassis
+light bar and logo LED.
 
 ## Verification status
 
-v0.1 was built and unit-tested (82 tests) on a machine that cannot elevate and
-has no Gigabyte hardware attached, so **nothing here has been confirmed against
-a real embedded controller yet** — not the fan modes, not the custom curve,
-not the battery charge limit, not autostart, not sleep/resume behaviour.
-Everything is implemented against the protocol reverse-engineered from
-Gigabyte Control Center and covered by unit tests against a fake WMI layer,
-which is not the same thing as a fan spinning up on a real laptop.
+v0.1 was built on a machine that cannot elevate and has no Gigabyte hardware
+attached, and v0.2 was built on the same machine, with no keyboard of the
+supported family present either. So **nothing here has been confirmed against a
+real embedded controller or a real keyboard**: not the fan modes, not the
+custom curve, not the battery charge limit, not autostart, not sleep/resume
+behaviour, and not one pixel of the lighting. Everything is implemented against
+protocols reverse-engineered from Gigabyte Control Center and covered by unit
+tests against a fake WMI layer and a fake HID device, which is not the same
+thing as a fan spinning up or a key lighting on a real laptop.
 
 [`VERIFY.md`](VERIFY.md) lists every check that still needs to happen on
 actual hardware before this should be considered trustworthy. If you run any
@@ -52,8 +87,10 @@ Download `OpenAorus-vX.Y.Z-win-x64.exe` from Releases (or the smaller
 accept the UAC prompt. In ⚙ Settings turn on **Start with Windows** to get a
 silent elevated tray start, and **Take over from Gigabyte Control Center** so
 GCC stops fighting your fan mode. Keep GCC installed: it provides the WMI schema
-(`acpimof.dll`) that OpenAorus talks to. Removing that dependency is a future
-item, not a v0.1 feature.
+(`acpimof.dll`) that OpenAorus talks to for fans, sensors and the battery.
+Removing that dependency is a future item. The lighting does not depend on it;
+that side is plain HID and would work on a machine with GCC uninstalled, which
+the fan side would not.
 
 Command-line flags: `--tray` starts hidden in the tray (used by the autostart
 task), `--show` forces the window visible even together with `--tray`,
@@ -84,6 +121,46 @@ experimental. If you have a different supported model, please run
 `OpenAorus.exe --dump > dump.txt` from an elevated terminal and open an issue
 with the file and your exact model name — that's how more profiles get added.
 
+The lighting is keyed on the keyboard, not on the model list above, so the two
+do not have to agree: a laptop whose fan profile is a best guess can still get
+its lighting restored, and a laptop on the supported list with a different
+keyboard gets no Lighting section at all.
+
+### Which keyboards
+
+OpenAorus looks for the Ione "Fusion RGB KB" family: USB vendor `0x1044` (some
+units enumerate as `0x0414`) with product `0x7A3C`, `0x7A3D` or `0x7A3F`. It
+picks the lighting endpoint out of that device's collections by their HID
+capabilities rather than by parsing device paths. Other Gigabyte keyboards,
+including the ITE-family ones, speak a different protocol and are not supported.
+
+Per-key colours are addressed by 128 firmware slots, and the slot order differs
+between the ENG-US and ENG-UK variants of the keyboard. Both maps were
+transcribed out of Gigabyte's own software and **neither has been measured
+against a real keyboard**. OpenAorus follows Gigabyte's software in treating
+`0x7A3D` as the ENG-UK order; everything else, `0x7A3C` and `0x7A3F` alike, gets
+ENG-US. For `0x7A3C` that is what Gigabyte's software says. For `0x7A3F` it is a
+fallback with nothing behind it: that model's slot order is genuinely unknown,
+and ENG-US was chosen so lighting works at all rather than because there is any
+reason to think it is right.
+
+The symptom of a wrong guess is that you paint one key and a different key
+lights. If that happens, add a `LayoutOverride` to the `Lighting` section of
+`%LocalAppData%\OpenAorus\settings.json`:
+
+```json
+{
+  "Lighting": {
+    "LayoutOverride": "EngUs"
+  }
+}
+```
+
+The rest of the file stays as it is; `"EngUk"` is the other value, and removing
+the line goes back to the guess. Restart the app after editing. Section 5 of
+[`VERIFY.md`](VERIFY.md) walks through the check that settles it. Reports from
+any model are welcome, including the ones that turn out to be fine.
+
 ## Safety
 
 OpenAorus only calls the same `GB_WMIACPI` methods Gigabyte Control Center
@@ -105,18 +182,28 @@ in [`VERIFY.md`](VERIFY.md), not yet a confirmed guarantee.
 
 ## Docs
 
-- [v0.1 design](docs/superpowers/specs/2026-09-06-openaorus-v0.1-design.md)
+- [v0.1 design](docs/superpowers/specs/2026-09-06-openaorus-v0.1-design.md) and
+  [v0.2 keyboard RGB design](docs/superpowers/specs/2026-09-06-openaorus-v0.2-rgb-design.md)
 - [Research notes](docs/research/2026-09-05-research-notes.md) and the full
   [WMI method table](docs/research/gb-wmiacpi-methods-aorus-17g-kd.txt)
+- [Keyboard protocol notes](docs/research/ione-keyboard-protocol.md), with the
+  two recovered slot maps
+  ([ENG-US](docs/research/ione-keymap-eng-us.txt),
+  [ENG-UK](docs/research/ione-keymap-eng-uk.txt))
 - [`VERIFY.md`](VERIFY.md) — the hardware verification checklist
 
 ## Credits
 
 Protocol knowledge builds on
 [tangalbert919/gigabyte-laptop-wmi](https://github.com/tangalbert919/gigabyte-laptop-wmi),
-[s-h-a-d-o-w/alfc](https://github.com/s-h-a-d-o-w/alfc),
-[wtwrp/aeroctl](https://gitlab.com/wtwrp/aeroctl) and
-[rcassani/keyboard-fusion-rgb](https://github.com/rcassani/keyboard-fusion-rgb).
+[s-h-a-d-o-w/alfc](https://github.com/s-h-a-d-o-w/alfc) and
+[wtwrp/aeroctl](https://gitlab.com/wtwrp/aeroctl) for the fan, sensor and
+battery WMI interface, and on
+[rcassani/keyboard-fusion-rgb](https://github.com/rcassani/keyboard-fusion-rgb)
+for the keyboard lighting: the protocol here was reconstructed from Gigabyte's
+own binaries and then cross-checked field by field against that project, which
+covers the same Ione keyboard family. It is GPL-3.0, as is this, and only
+protocol facts were taken rather than code.
 
 ## License
 

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -19,6 +19,24 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAorus.Hardware\OpenAorus.Hardware.csproj" />
+    <!-- AppServices is the one piece of startup orchestration that cannot live in the hardware
+         library; referenced here so its read-only/lighting behaviour is covered like the rest. -->
+    <ProjectReference Include="..\..\src\OpenAorus.App\OpenAorus.App.csproj" />
+  </ItemGroup>
+
+  <!-- The recovered key orders are test data: KeyLayoutTests compares the C# arrays
+       against these files rather than against a hand-copied subset. -->
+  <ItemGroup>
+    <None Include="..\..\docs\research\ione-keymap-eng-*.txt" CopyToOutputDirectory="PreserveNewest" Link="keymaps\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- The markup is test data too. XamlResourceTests reads it as plain XML - no WPF, no
+       Application, no STA thread - because a StaticResource key typo compiles cleanly and
+       only throws when the panel is first shown. -->
+  <ItemGroup>
+    <None Include="..\..\src\OpenAorus.App\Views\*.xaml" CopyToOutputDirectory="PreserveNewest" Link="xaml\Views\%(Filename)%(Extension)" />
+    <None Include="..\..\src\OpenAorus.App\Themes\Dark.xaml" CopyToOutputDirectory="PreserveNewest" Link="xaml\Themes\%(Filename)%(Extension)" />
+    <None Include="..\..\src\OpenAorus.App\Converters.cs" CopyToOutputDirectory="PreserveNewest" Link="xaml\Converters.cs.txt" />
   </ItemGroup>
 
 </Project>

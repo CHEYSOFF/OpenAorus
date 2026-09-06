@@ -21,12 +21,17 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusLine = "";
     [ObservableProperty] private bool _isWindowVisible;
+    [ObservableProperty] private AppSection _selectedSection;
 
     public bool CanWrite => _s.Profile.CanWrite;
+
+    /// <summary>Whether the Lighting half of the window exists. False hides its button entirely.</summary>
+    public bool LightingAvailable => Lighting.KeyboardPresent;
     public string ModelLine => $"{_s.Profile.Name} · {_s.Profile.Status} · v{_s.Version}";
     public IReadOnlyList<FanMode> Modes { get; } = Enum.GetValues<FanMode>();
     public CurveEditorViewModel Curve { get; }
     public BatteryViewModel Battery { get; }
+    public LightingViewModel Lighting { get; }
     public SettingsViewModel SettingsVm { get; }
 
     public MainViewModel(AppServices services)
@@ -38,6 +43,7 @@ public partial class MainViewModel : ObservableObject
         _poller.Updated += OnSensors;
         Curve = new CurveEditorViewModel(_s.Settings.Curve);
         Battery = new BatteryViewModel(_s, SetBanner);
+        Lighting = new LightingViewModel(_s, SetBanner);
         SettingsVm = new SettingsViewModel(_s);
 
         _bannerState = new BannerState(_s.Profile);
@@ -52,15 +58,31 @@ public partial class MainViewModel : ObservableObject
                 "If 'Take over from Gigabyte Control Center' was on, its record is gone - re-check it in Settings.");
             SyncBanner();
         }
+        else if (_s.Store.LastLoadRepaired)
+        {
+            // Same route as the reset notice above, and for the same reason: the owner's saved
+            // lighting changed without them asking. Only what the keyboard could not have accepted
+            // was touched -- clamped where a value had a sane nearest match, removed where it did
+            // not -- so this says both rather than claiming a full reset.
+            _bannerState.ReportOverrideNotice(BannerKind.Warning,
+                "Some saved lighting settings were out of range and have been reset to defaults. " +
+                "Saved presets or per-key colours that could not be read were removed. " +
+                "Everything else in your settings was kept.");
+            SyncBanner();
+        }
     }
 
     public async Task InitializeAsync()
     {
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         _poller.Start();
+        // Applied on every model, not just writable ones: the saved lighting is restored even
+        // where the fan and charge-limit writes are withheld. On a read-only model the result
+        // then always carries "read-only model", which is the expected state the model banner
+        // already explains - reporting it here as a startup failure would be noise.
+        var r = await _s.ApplySavedAsync();
         if (CanWrite)
         {
-            var r = await _s.ApplySavedAsync();
             StatusLine = r.Success ? $"Applied {SelectedMode} at startup" : $"Startup apply failed: {r.Error}";
             if (!r.Success) { _bannerState.ReportFailure(r.Error!); SyncBanner(); }
         }
@@ -72,6 +94,23 @@ public partial class MainViewModel : ObservableObject
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _poller.Stop();
+        // A lighting sequence is paced 65 ms per report and there is no window left to show its
+        // result on, so it is dropped rather than held on to on the way out.
+        Lighting.Shutdown();
+    }
+
+    /// <summary>Switches the window between Cooling and Lighting.</summary>
+    [RelayCommand]
+    private void SelectSection(AppSection section) => SelectedSection = section;
+
+    /// <summary>
+    /// Refuses a section that is not there. With no keyboard the Lighting button is not drawn, so
+    /// this only fires on a stale binding or a later caller - and leaving the window showing an
+    /// empty panel with no way back would be the worse of the two outcomes.
+    /// </summary>
+    partial void OnSelectedSectionChanged(AppSection value)
+    {
+        if (value == AppSection.Lighting && !LightingAvailable) SelectedSection = AppSection.Cooling;
     }
 
     partial void OnIsWindowVisibleChanged(bool value) =>
@@ -89,13 +128,19 @@ public partial class MainViewModel : ObservableObject
         // IsBusy also guards against a mode click landing during the delay below, and against Windows
         // firing PowerModes.Resume twice for a single wake - both would otherwise race a second write
         // sequence against the controller alongside this one.
-        if (e.Mode != PowerModes.Resume || !CanWrite || IsBusy) return;
+        if (e.Mode != PowerModes.Resume || IsBusy) return;
         IsBusy = true;
         try
         {
             await Task.Delay(3000); // let the EC and WMI provider wake up
+            // Same reasoning as the startup apply: a read-only model still gets its lighting
+            // back after a wake, and its expected "read-only model" result is not a status line.
+            // Left unpinned on purpose - this is a private async void handler behind a hard-coded
+            // delay, and the seam needed to reach it would cost more than the duplicate it covers.
+            // MainViewModelStartupTests pins the same decision where startup makes it.
             var r = await _s.ApplySavedAsync();
-            StatusLine = r.Success ? $"Re-applied {SelectedMode} after resume" : $"Resume apply failed: {r.Error}";
+            if (CanWrite)
+                StatusLine = r.Success ? $"Re-applied {SelectedMode} after resume" : $"Resume apply failed: {r.Error}";
         }
         finally { IsBusy = false; }
     }
