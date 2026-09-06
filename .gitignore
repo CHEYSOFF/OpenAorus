@@ -9,3 +9,6 @@ TestResults/
 publish/
 *.log
 .superpowers/
+
+# Agent worktrees and local tooling state live here; never commit them.
+.claude/
