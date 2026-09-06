@@ -1211,6 +1211,43 @@ Applying per-key colours is three writes in order: the two colour reports, then 
 `0x02` report selecting effect `0x12`. Selecting the effect first would show the
 previous custom colours for a moment.
 
+> **AMENDMENT, supersedes the sample code below where they conflict.**
+>
+> `ApplyEffectAsync` must **read-modify-write**, not send a freshly zeroed buffer.
+>
+> Every effect keeps its configuration in its own slice of one shared 264-byte block,
+> and command `0x82` reads that whole block back — so the keyboard stores it. Sending a
+> zeroed buffer with only the active effect's slice filled would therefore erase every
+> other effect's saved settings on each switch: set up Wave, select Ripple, come back,
+> and Wave is at defaults. See section 6a of the design spec.
+>
+> The sequence is: `SetFeature` a `0x82` request, `GetFeature` 264 bytes, patch only what
+> this effect owns, then `SetFeature` the `0x02` report. Patching means bytes 0 and 1
+> (framing), 2..9 (zero), 10 (effect id), 11 (the `0xFF` marker, which must be cleared
+> when the new effect is not Static or StarShining), 12 (brightness), and the effect's
+> own slice. Everything else in the buffer is preserved untouched.
+>
+> If the read fails or returns anything other than 264 bytes, fall back to a zeroed
+> buffer — that is the old behaviour and no worse than it. Do not fail the call.
+>
+> This needs a new `EffectPacket.Build(EffectParameters, byte[] existing)` overload that
+> patches a caller-supplied buffer; the existing single-argument `Build` stays and is
+> defined as patching a fresh zeroed buffer. Both must produce identical output when the
+> supplied buffer is all zeroes — pin that with a test.
+>
+> Consequences for the tests written below, which assume a single write:
+> `ApplyEffect_writes_one_report_built_by_EffectPacket` becomes a read followed by one
+> write, so assert on the **last** `hid.Written` entry rather than `Assert.Single`.
+> Add a test proving the surrounding buffer survives: seed the fake's read-back with a
+> recognisable non-zero pattern outside the target slice, apply an effect, and assert
+> those bytes are unchanged in what was written. Add a test that a failed or short read
+> falls back to zeroes and still succeeds.
+>
+> This is correct whether the firmware persists the whole block or reads only the active
+> mode's slice, so it does not wait on hardware. It costs one extra feature report per
+> change, well inside the 65 ms pacing budget. Per-key colours are unaffected: research
+> document line 89 confirms they live in separate storage and survive a `0x02` write.
+
 - [ ] **Step 1: Write the failing tests**
 
 `tests/OpenAorus.Hardware.Tests/LightingControllerTests.cs`:
