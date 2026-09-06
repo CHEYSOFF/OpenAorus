@@ -54,6 +54,8 @@ public static class PerKeyPacket
     /// <summary>
     /// Builds the two read requests. Each is written to the device, then answered by a
     /// <c>GetFeature</c> whose payload feeds <see cref="Parse"/>.
+    /// The reference documents only <c>[3]</c>, the page selector; bytes 4..263 are
+    /// zero-filled following every other documented request, unverified on hardware.
     /// </summary>
     public static (byte[] First, byte[] Second) BuildRead() =>
         (NewReport(ReadCommand, FirstPage), NewReport(ReadCommand, SecondPage));

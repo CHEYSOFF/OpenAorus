@@ -8,7 +8,9 @@ namespace OpenAorus.Hardware.Lighting;
 /// Layout: [0]=0x07 report id, [1]=0x02 command, [2..9]=0, [10]=effect id,
 /// [11]=0xFF for Static and StarShining else 0, [12]=brightness,
 /// [13 + Offsets[effect] ...]=the effect's own configuration bytes.
-/// Each effect owns a private slice, so changing one leaves the others intact.
+/// Each effect owns a private slice, so changing one leaves the others intact — but only
+/// if the write carries the rest of the block through. Command 0x82 reads the whole block
+/// back, so callers read first and pass it to the two-argument <see cref="Build(EffectParameters, byte[])"/>.
 ///
 /// The configuration shape per effect is not independently documented; it is derived
 /// from the gap between an effect's offset and the next one in the table, which must
@@ -102,14 +104,51 @@ public static class EffectPacket
         _ => 0,
     };
 
-    /// <summary>Builds the 264-byte "set effect" report for these parameters.</summary>
+    /// <summary>
+    /// Builds the 264-byte "read current status" request (command 0x82). The answer comes
+    /// back through a separate <c>GetFeature</c> and is the whole shared configuration block.
+    /// </summary>
+    /// <remarks>
+    /// The reference documents only bytes [0] and [1]; bytes 2..263 are zero-filled following
+    /// every other documented request, unverified on hardware.
+    /// </remarks>
+    public static byte[] BuildStatusRequest()
+    {
+        var request = new byte[KeyboardHid.ReportLength];
+        request[0] = KeyboardHid.ReportId;
+        request[1] = 0x82;
+        return request;
+    }
+
+    /// <summary>Builds the 264-byte "set effect" report for these parameters, over a zeroed block.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="p"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The effect id is not one this protocol defines.</exception>
-    public static byte[] Build(EffectParameters p)
+    public static byte[] Build(EffectParameters p) => Build(p, new byte[KeyboardHid.ReportLength]);
+
+    /// <summary>
+    /// Patches <paramref name="existing"/> — a block just read back with command 0x82 — with
+    /// these parameters, and returns the result as a new array.
+    /// </summary>
+    /// <remarks>
+    /// All 18 effects share one block and each owns a private slice of it, so a write must
+    /// carry the other effects' stored configuration back untouched. Sending a freshly zeroed
+    /// report would reset every effect the user is not currently looking at. Only the framing
+    /// bytes 0..12 and this effect's own slice are written; everything else is copied through.
+    /// </remarks>
+    /// <param name="p">The effect and its parameters.</param>
+    /// <param name="existing">A 264-byte block to patch. Not modified; the caller keeps it.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="p"/> or <paramref name="existing"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="existing"/> is not 264 bytes.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The effect id is not one this protocol defines.</exception>
+    public static byte[] Build(EffectParameters p, byte[] existing)
     {
         ArgumentNullException.ThrowIfNull(p);
+        ArgumentNullException.ThrowIfNull(existing);
+        if (existing.Length != KeyboardHid.ReportLength)
+            throw new ArgumentException($"The existing block must be {KeyboardHid.ReportLength} bytes.", nameof(existing));
 
-        var packet = new byte[KeyboardHid.ReportLength];
+        var packet = (byte[])existing.Clone();
+        Array.Clear(packet, 2, 8); // [2..9] are framing, not storage: zero them even when the read said otherwise
         packet[0] = KeyboardHid.ReportId;
         packet[1] = 0x02;
         packet[10] = (byte)p.Effect;

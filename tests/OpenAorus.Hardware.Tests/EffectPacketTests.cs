@@ -336,6 +336,72 @@ public class EffectPacketTests
     public void Build_rejects_null_parameters()
         => Assert.Throws<ArgumentNullException>(() => EffectPacket.Build(null!));
 
+    [Theory]
+    [MemberData(nameof(EveryEffect))]
+    public void Both_Build_overloads_agree_when_the_supplied_buffer_is_zeroed(LightEffect effect)
+    {
+        // The one-argument Build is defined as patching a fresh zeroed buffer; this pins that
+        // definition so the read-modify-write path cannot drift away from it.
+        var p = EffectParameters.Default(effect) with
+        {
+            Color = new RgbColor(0x41, 0x42, 0x43),
+            SecondColor = new RgbColor(0x44, 0x45, 0x46),
+            SpeedPercent = 70,
+            BrightnessPercent = 33,
+            Direction = LightDirection.Down,
+            Random = true,
+        };
+
+        Assert.Equal(EffectPacket.Build(p), EffectPacket.Build(p, new byte[KeyboardHid.ReportLength]));
+    }
+
+    [Fact]
+    public void Building_onto_an_existing_block_touches_only_the_header_and_the_effects_own_slice()
+    {
+        var existing = new byte[KeyboardHid.ReportLength];
+        for (var i = 0; i < existing.Length; i++) existing[i] = 0xA5;
+        var (offset, length) = DocumentedSlices[LightEffect.Wave];
+
+        var packet = EffectPacket.Build(EffectParameters.Default(LightEffect.Wave), existing);
+
+        Assert.Equal(KeyboardHid.ReportId, packet[0]);
+        Assert.Equal(0x02, packet[1]);
+        Assert.Equal(new byte[8], packet[2..10]);
+        Assert.Equal((byte)LightEffect.Wave, packet[10]);
+        Assert.Equal(0x00, packet[11]);
+        for (var i = 13; i < 13 + offset; i++) Assert.Equal(0xA5, packet[i]);
+        for (var i = 13 + offset + length; i < packet.Length; i++) Assert.Equal(0xA5, packet[i]);
+    }
+
+    [Fact]
+    public void Building_onto_an_existing_block_leaves_the_callers_buffer_alone()
+    {
+        var existing = new byte[KeyboardHid.ReportLength];
+        var packet = EffectPacket.Build(EffectParameters.Default(LightEffect.Static), existing);
+
+        Assert.NotSame(existing, packet);
+        Assert.Equal(new byte[KeyboardHid.ReportLength], existing);
+    }
+
+    [Fact]
+    public void Building_onto_a_wrong_sized_block_is_rejected()
+    {
+        var p = EffectParameters.Default(LightEffect.Static);
+        Assert.Throws<ArgumentNullException>(() => EffectPacket.Build(p, null!));
+        Assert.Throws<ArgumentException>(() => EffectPacket.Build(p, new byte[8]));
+    }
+
+    [Fact]
+    public void The_status_request_carries_only_the_report_id_and_command()
+    {
+        var request = EffectPacket.BuildStatusRequest();
+
+        Assert.Equal(KeyboardHid.ReportLength, request.Length);
+        Assert.Equal(KeyboardHid.ReportId, request[0]);
+        Assert.Equal(0x82, request[1]);
+        Assert.Equal(new byte[KeyboardHid.ReportLength - 2], request[2..]);
+    }
+
     [Fact]
     public void The_offset_table_cannot_be_cast_back_to_a_mutable_dictionary()
         => Assert.IsNotType<Dictionary<LightEffect, int>>(EffectPacket.Offsets);

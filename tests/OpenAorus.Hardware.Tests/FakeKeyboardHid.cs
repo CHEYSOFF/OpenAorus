@@ -7,6 +7,11 @@ public sealed class FakeKeyboardHid : IKeyboardHid
     public List<byte[]> Written { get; } = new();
     public Queue<byte[]> Responses { get; } = new();
     public bool FailNextWrite { get; set; }
+
+    /// <summary>Zero-based index of a write to reject, for sequences where the interesting
+    /// failure is not the first report.</summary>
+    public int? FailWriteAt { get; set; }
+
     public bool IsPresent { get; set; } = true;
     public KeyboardIdentity? Identity { get; set; } =
         new(0x1044, 0x7A3D, @"\\?\hid#vid_1044&pid_7a3d&mi_02&col06#fake", "Fusion RGB KB");
@@ -15,7 +20,9 @@ public sealed class FakeKeyboardHid : IKeyboardHid
     {
         if (report.Length != KeyboardHid.ReportLength)
             throw new ArgumentException($"Report must be {KeyboardHid.ReportLength} bytes.", nameof(report));
+        var index = Written.Count;
         Written.Add((byte[])report.Clone());
+        if (FailWriteAt == index) return false;
         if (!FailNextWrite) return true;
         FailNextWrite = false;
         return false;
