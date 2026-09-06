@@ -404,4 +404,42 @@ public class PerKeyEditorViewModelTests : IDisposable
 
         Assert.Equal(Media(0x12, 0x34, 0x56), editor.BrushColor);
     }
+
+    /// <summary>
+    /// A colour typed into the hex box is the colour the next key is painted with, with nothing
+    /// clicked in between. The keys in the picture are not focusable, so the box is only ever
+    /// read by the view model if the binding pushes on every keystroke; this is the half of that
+    /// contract that lives here, and XamlResourceTests pins the other half in the markup.
+    /// </summary>
+    [Fact]
+    public void A_typed_colour_is_the_colour_the_next_key_is_painted_with()
+    {
+        var editor = Build().Editor();
+        var key = editor.Keys.Single(k => k.Name == "A");
+
+        editor.BrushHex = "#00FF00";
+        editor.PaintCommand.Execute(key);
+
+        Assert.Equal(Media(0x00, 0xFF, 0x00), key.Color);
+    }
+
+    /// <summary>
+    /// A read replaces every colour on the picture, including the one under the outline, so
+    /// leaving the outline where it was would mark a key that no longer holds what was painted.
+    /// </summary>
+    [Fact]
+    public async Task Reading_from_the_keyboard_drops_the_selection()
+    {
+        var h = Build();
+        var onDevice = Enumerable.Repeat(new RgbColor(1, 2, 3), KeyLayout.SlotCount).ToList();
+        var (first, second) = PerKeyPacket.BuildWrite(onDevice);
+        h.Hid.Responses.Enqueue(first);
+        h.Hid.Responses.Enqueue(second);
+        var editor = h.Editor();
+        editor.PaintCommand.Execute(editor.Keys[0]);
+
+        await editor.ReadFromKeyboardCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain(editor.Keys, k => k.IsSelected);
+    }
 }

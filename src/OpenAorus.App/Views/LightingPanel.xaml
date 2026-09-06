@@ -34,7 +34,10 @@
                      effect that ignores speed or direction simply does not offer the control. -->
                 <DockPanel Margin="0,0,0,6" Visibility="{Binding SupportsColor, Converter={StaticResource BoolVis}}">
                     <TextBlock DockPanel.Dock="Left" Width="70" VerticalAlignment="Center" Text="Colour"/>
-                    <TextBox DockPanel.Dock="Right" Width="76" Margin="6,0,0,0" Text="{Binding ColorHex}"
+                    <!-- PropertyChanged so the view model sees the value as it is typed, which is
+                         what its half-typed-value guard is written against. -->
+                    <TextBox DockPanel.Dock="Right" Width="76" Margin="6,0,0,0"
+                             Text="{Binding ColorHex, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Or type it as #RRGGBB"/>
                     <ComboBox ItemsSource="{Binding Swatches}" SelectedItem="{Binding PickedColor}"
                               ItemTemplate="{StaticResource SwatchTemplate}"/>
@@ -42,7 +45,8 @@
 
                 <DockPanel Margin="0,0,0,6" Visibility="{Binding SupportsSecondColor, Converter={StaticResource BoolVis}}">
                     <TextBlock DockPanel.Dock="Left" Width="70" VerticalAlignment="Center" Text="Second"/>
-                    <TextBox DockPanel.Dock="Right" Width="76" Margin="6,0,0,0" Text="{Binding SecondColorHex}"
+                    <TextBox DockPanel.Dock="Right" Width="76" Margin="6,0,0,0"
+                             Text="{Binding SecondColorHex, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Or type it as #RRGGBB"/>
                     <ComboBox ItemsSource="{Binding Swatches}" SelectedItem="{Binding PickedSecondColor}"
                               ItemTemplate="{StaticResource SwatchTemplate}"/>

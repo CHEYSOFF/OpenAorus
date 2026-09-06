@@ -100,7 +100,9 @@ public static class KeyboardGeometry
         "Ctrl-L" or "Ctrl-R" => "Ctrl",
         "Alt-L" or "Alt-R" => "Alt",
         "WinKey" => "Win",
-        "Menu" => "☰",
+        // Text rather than the ☰ glyph: it is only in the stock Windows font stack by luck, and
+        // a theme that picks a font without it would draw a box on the key instead.
+        "Menu" => "Mnu",
         "NumLk" => "NLk",
         "Pause" => "Paus",
         "Up" => "↑",

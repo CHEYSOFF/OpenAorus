@@ -30,4 +30,12 @@
     <None Include="..\..\docs\research\ione-keymap-eng-*.txt" CopyToOutputDirectory="PreserveNewest" Link="keymaps\%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The markup is test data too. XamlResourceTests reads it as plain XML - no WPF, no
+       Application, no STA thread - because a StaticResource key typo compiles cleanly and
+       only throws when the panel is first shown. -->
+  <ItemGroup>
+    <None Include="..\..\src\OpenAorus.App\Views\*.xaml" CopyToOutputDirectory="PreserveNewest" Link="xaml\Views\%(Filename)%(Extension)" />
+    <None Include="..\..\src\OpenAorus.App\Themes\Dark.xaml" CopyToOutputDirectory="PreserveNewest" Link="xaml\Themes\%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

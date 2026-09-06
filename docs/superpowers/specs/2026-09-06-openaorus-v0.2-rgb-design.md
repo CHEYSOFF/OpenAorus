@@ -98,7 +98,13 @@ that made the fan sequences testable in v0.1. `KeyboardHid` is the only file all
 to call `hid.dll` or `setupapi.dll`.
 
 The main window grows a second tab or a segmented control: Cooling | Lighting. The
-window stays the same width; only its height grows when Lighting is selected.
+window keeps the fixed size it has in v0.1 — the same width and the same height — and
+the Lighting section scrolls inside it. Sizing the window to its content was the
+original intent and was dropped during implementation: the per-key editor appears and
+disappears with the Custom effect, so the window would have to resize itself every
+time the effect combo changed, which moves the controls under the pointer mid-edit and
+can leave the window taller than the screen on a laptop panel. A scrolled section costs
+one scrollbar and keeps the window where the owner put it.
 
 ## 4. Behaviour
 

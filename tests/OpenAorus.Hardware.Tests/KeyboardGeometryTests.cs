@@ -60,11 +60,15 @@ public class KeyboardGeometryTests
     /// keyboard are far apart and out of order in the report - the brackets are the clearest
     /// case, and the minus and equals are the second. Anyone tempted to "fix" the slot arrays
     /// so the picture reads left to right breaks the lighting on every key; this fails first.
+    /// Over both layouts, because both arrays are equally tempting and these four slots hold
+    /// the same names in each.
     /// </summary>
-    [Fact]
-    public void The_drawn_order_is_not_the_slot_order()
+    [Theory]
+    [InlineData(KeyboardLayout.EngUs)]
+    [InlineData(KeyboardLayout.EngUk)]
+    public void The_drawn_order_is_not_the_slot_order(KeyboardLayout which)
     {
-        var layout = KeyLayout.For(KeyboardLayout.EngUs);
+        var layout = KeyLayout.For(which);
         var drawn = DrawnNames.ToList();
 
         Assert.True(drawn.IndexOf("[") < drawn.IndexOf("]"), "the picture draws [ before ]");

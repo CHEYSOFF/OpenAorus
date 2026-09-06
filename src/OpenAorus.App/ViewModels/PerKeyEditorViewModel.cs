@@ -199,6 +199,9 @@ public partial class PerKeyEditorViewModel : ObservableObject
         {
             var c = key.Slot < colors.Count ? colors[key.Slot] : RgbColor.Black;
             key.Color = MediaColor.FromRgb(c.R, c.G, c.B);
+            // The outline marks the key painted last, and nothing here was painted: leaving it
+            // would point at a key whose colour has just been replaced by the keyboard's own.
+            key.IsSelected = false;
         }
     }
 
