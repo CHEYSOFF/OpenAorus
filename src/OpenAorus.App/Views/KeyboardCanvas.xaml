@@ -54,7 +54,12 @@
              is the one part of the keyboard they would most easily believe is not there. Down only,
              so on a wider window the keys stay their natural size instead of being blown up. -->
         <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,0,0,6">
-            <ItemsControl ItemsSource="{Binding Blocks}">
+            <!-- One tab stop for the whole picture, arrows to move inside it. Without this all
+                 101 keys sit in the tab order, so reaching Apply from the brush box means
+                 tabbing across the entire keyboard. -->
+            <ItemsControl ItemsSource="{Binding Blocks}"
+                          KeyboardNavigation.TabNavigation="Once"
+                          KeyboardNavigation.DirectionalNavigation="Contained">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
