@@ -70,9 +70,11 @@ Gigabyte's laptop lineup. Per the device list in
   A16), plus some P-series machines.
 - **Not supported at all, and never will be by this app**: Sabre, GIGABYTE
   Gaming 2024 and earlier (G5, G6, G7), and the U series. These are rebadged
-  Clevo laptops with a completely different embedded-controller interface — if
-  you own one, look at a Clevo-specific tool instead, such as
-  [NoteBookFanControl](https://github.com/hirschmann/nbfc).
+  Clevo laptops with a completely different embedded-controller interface.
+  If you own one, try [NoteBookFanControl](https://github.com/hirschmann/nbfc)
+  instead — it is a community-configured embedded-controller fan tool rather
+  than a Gigabyte or Clevo specific one, and it ships configurations covering
+  many Clevo-built machines.
 
 Even within the supported families, the fan-duty scale (how many discrete
 steps the controller accepts) varies by model. Only the **AORUS 17G KD** is a
