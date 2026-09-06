@@ -52,6 +52,16 @@ public partial class MainViewModel : ObservableObject
                 "If 'Take over from Gigabyte Control Center' was on, its record is gone - re-check it in Settings.");
             SyncBanner();
         }
+        else if (_s.Store.LastLoadRepaired)
+        {
+            // Same route as the reset notice above, and for the same reason: the owner's saved
+            // lighting changed without them asking. Only the settings the keyboard could not have
+            // accepted were replaced, so this says so rather than claiming a full reset.
+            _bannerState.ReportOverrideNotice(BannerKind.Warning,
+                "Some saved lighting settings were out of range and have been reset to defaults. " +
+                "Everything else in your settings was kept.");
+            SyncBanner();
+        }
     }
 
     public async Task InitializeAsync()
