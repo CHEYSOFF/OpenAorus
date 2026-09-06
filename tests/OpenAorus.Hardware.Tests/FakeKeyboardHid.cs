@@ -22,7 +22,8 @@ public sealed class FakeKeyboardHid : IKeyboardHid
             throw new ArgumentException($"Report must be {KeyboardHid.ReportLength} bytes.", nameof(report));
         var index = Written.Count;
         Written.Add((byte[])report.Clone());
-        if (FailWriteAt == index) return false;
+        // Consume FailNextWrite here too: setting both knobs must still fail exactly one write.
+        if (FailWriteAt == index) { FailNextWrite = false; return false; }
         if (!FailNextWrite) return true;
         FailNextWrite = false;
         return false;

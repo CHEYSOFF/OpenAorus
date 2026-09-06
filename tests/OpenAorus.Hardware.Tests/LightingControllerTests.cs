@@ -343,6 +343,24 @@ public class LightingControllerTests
         Assert.Equal(3, delays);
     }
 
+    /// <summary>
+    /// The per-key path already covers pacing across four reports, but selecting an effect is
+    /// the operation a brightness slider fires over and over, and its own two reports have to
+    /// be spaced apart or the keyboard drops one.
+    /// </summary>
+    [Fact]
+    public async Task An_effect_apply_paces_its_status_read_and_its_write()
+    {
+        var delays = 0;
+        var hid = new FakeKeyboardHid();
+        var ctl = new LightingController(hid, KeyLayout.For(KeyboardLayout.EngUk), _ => { delays++; return Task.CompletedTask; });
+
+        await ctl.ApplyEffectAsync(EffectParameters.Default(LightEffect.Static));
+
+        Assert.Equal(2, hid.Written.Count);
+        Assert.Equal(1, delays);
+    }
+
     [Fact]
     public async Task Concurrent_applies_are_serialized()
     {
@@ -362,5 +380,59 @@ public class LightingControllerTests
         Assert.Equal(0x02, hid.Command(3)); // the per-key apply finished before the effect apply began
         Assert.Equal((byte)LightEffect.Custom, hid.Written[3][10]);
         Assert.Equal((byte)LightEffect.Static, hid.Written[^1][10]);
+    }
+
+    // ---- Cancellation ---------------------------------------------------------------
+    // Cancelling throws rather than returning a failed result, matching FanController: a
+    // caller that cancelled asked for the sequence to stop and has no error to show anyone.
+    // What matters is where it stops - between reports, never mid-report - and that the gate
+    // comes back, so the next apply is not stuck behind an abandoned one.
+
+    [Fact]
+    public async Task A_cancelled_token_stops_the_sequence_between_reports_and_frees_the_gate()
+    {
+        var hid = new FakeKeyboardHid();
+        var cts = new CancellationTokenSource();
+        // Cancel while the pacing delay after the first colour report is running.
+        var ctl = new LightingController(
+            hid, KeyLayout.For(KeyboardLayout.EngUk), _ => { cts.Cancel(); return Task.CompletedTask; });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ctl.ApplyPerKeyAsync(Solid(RgbColor.White), 50, cts.Token));
+
+        // It stopped between reports, not mid-report: only page one went out, and the
+        // keyboard was never switched to Custom, so no half-painted state is on screen.
+        Assert.Single(hid.Written);
+        Assert.Equal(0x06, hid.Command(0));
+
+        // The gate is free: the next apply is not deadlocked behind the cancelled one.
+        Assert.True((await ctl.ApplyEffectAsync(EffectParameters.Default(LightEffect.Static))).Success);
+    }
+
+    [Fact]
+    public async Task An_already_cancelled_token_writes_nothing()
+    {
+        var (ctl, hid) = Make();
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ctl.ApplyEffectAsync(EffectParameters.Default(LightEffect.Static), cts.Token));
+
+        Assert.Empty(hid.Written);
+    }
+
+    [Fact]
+    public async Task A_cancelled_per_key_read_frees_the_gate()
+    {
+        var hid = new FakeKeyboardHid();
+        hid.Responses.Enqueue(new byte[KeyboardHid.ReportLength]);
+        var cts = new CancellationTokenSource();
+        var ctl = new LightingController(
+            hid, KeyLayout.For(KeyboardLayout.EngUk), _ => { cts.Cancel(); return Task.CompletedTask; });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ctl.ReadPerKeyAsync(cts.Token));
+
+        Assert.True((await ctl.ApplyEffectAsync(EffectParameters.Default(LightEffect.Static))).Success);
     }
 }

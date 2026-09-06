@@ -59,6 +59,7 @@ public partial class MainViewModel : ObservableObject
             // accepted were replaced, so this says so rather than claiming a full reset.
             _bannerState.ReportOverrideNotice(BannerKind.Warning,
                 "Some saved lighting settings were out of range and have been reset to defaults. " +
+                "Saved presets or per-key colours that could not be read were removed. " +
                 "Everything else in your settings was kept.");
             SyncBanner();
         }

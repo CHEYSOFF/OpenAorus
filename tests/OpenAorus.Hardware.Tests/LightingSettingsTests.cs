@@ -120,6 +120,21 @@ public class LightingSettingsTests : IDisposable
         Assert.Equal(presets.Select(p => p.Name).Distinct().Count(), presets.Count);
     }
 
+    /// <summary>
+    /// The seeds are handed to a UI that binds them straight to editable fields, so each call
+    /// has to produce fresh instances: caching one array would let a rename in the preset
+    /// editor rewrite the built-in for the life of the process.
+    /// </summary>
+    [Fact]
+    public void Editing_a_built_in_preset_does_not_rewrite_the_built_in()
+    {
+        var picked = LightingSettings.BuiltInPresets.First(p => p.Name == "Off");
+        picked.Name = "Renamed";
+        picked.BrightnessPercent = 99;
+        Assert.Contains(LightingSettings.BuiltInPresets,
+            p => p.Name == "Off" && p.BrightnessPercent == 0);
+    }
+
     [Fact]
     public void Built_in_presets_all_build_a_packet()
     {
@@ -247,12 +262,20 @@ public class LightingSettingsTests : IDisposable
     [Fact]
     public void A_null_colour_list_becomes_an_empty_one()
     {
-        WriteSettingsFile("{ \"Lighting\": { \"PerKeyColors\": null, \"Presets\": null } }");
+        WriteSettingsFile("{ \"Mode\": \"Gaming\", \"Lighting\": { \"PerKeyColors\": null, \"Presets\": null } }");
         var store = new SettingsStore(File);
         var loaded = store.Load();
 
         Assert.Empty(loaded.Lighting.PerKeyColors);
         Assert.Empty(loaded.Lighting.Presets);
+
+        // Empty lists on their own prove nothing: a full reset produces them too. Without the
+        // null guards on the two list properties, Repair would dereference null, Load would
+        // swallow it and hand back defaults, and the assertions above would still pass. The
+        // rest of the file surviving is what tells the two paths apart.
+        Assert.Equal(FanMode.Gaming, loaded.Mode);
+        Assert.False(store.LastLoadWasReset);
+        Assert.False(System.IO.File.Exists(File + ".bad"));
     }
 
     [Fact]

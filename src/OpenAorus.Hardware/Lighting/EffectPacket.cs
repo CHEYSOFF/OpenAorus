@@ -134,6 +134,10 @@ public static class EffectPacket
     /// carry the other effects' stored configuration back untouched. Sending a freshly zeroed
     /// report would reset every effect the user is not currently looking at. Only the framing
     /// bytes 0..12 and this effect's own slice are written; everything else is copied through.
+    /// That includes the tail past Crash's slice, which is preserved deliberately even though
+    /// the reference nominally calls the rest of the block zero: the offset table was
+    /// reconstructed, so a nineteenth storage region beyond the last known slice cannot be
+    /// ruled out, and carrying unknown bytes through is the safer half of that bet.
     /// </remarks>
     /// <param name="p">The effect and its parameters.</param>
     /// <param name="existing">A 264-byte block to patch. Not modified; the caller keeps it.</param>
