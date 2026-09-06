@@ -28,7 +28,7 @@ does not have that problem.
 dotnet run --project src/OpenAorus.App -- --dump
 ```
 
-- [ ] The output starts with `OpenAorus 0.1.0 diagnostics` and a model line reading
+- [ ] The output starts with `OpenAorus 0.2.0 diagnostics` and a model line reading
       `Model: AORUS 17G KD (Tested, DutyMax=229, Fans=2)`
 - [ ] `getCpuTemp` reports a plausible temperature in °C
 - [ ] `GetCPUFanDuty` and `GetGPUFanDuty` are between 0 and 229
@@ -135,7 +135,8 @@ from Gigabyte's software and has never been measured against hardware.
       light `[`, not `]` - the two are 16 slots apart in the report and are the pair most
       likely to expose a wrong map
 - [ ] If a key lights that is not the one you painted, note which key you painted and
-      which one lit, then set `"LayoutOverride": "EngUs"` (or `"EngUk"`) in
+      which one lit, then set `"LayoutOverride"` to `"EngUs"` (or `"EngUk"`) inside the
+      `"Lighting"` section of
       `%LocalAppData%\OpenAorus\settings.json`, restart, and try the same key again
 - [ ] If neither order gets it right, the recovered map is wrong for this model. The two
       key names and the slot number from the status line are exactly what is needed to
