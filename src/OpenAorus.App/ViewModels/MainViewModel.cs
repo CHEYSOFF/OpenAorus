@@ -27,6 +27,7 @@ public partial class MainViewModel : ObservableObject
     public IReadOnlyList<FanMode> Modes { get; } = Enum.GetValues<FanMode>();
     public CurveEditorViewModel Curve { get; }
     public BatteryViewModel Battery { get; }
+    public LightingViewModel Lighting { get; }
     public SettingsViewModel SettingsVm { get; }
 
     public MainViewModel(AppServices services)
@@ -38,6 +39,7 @@ public partial class MainViewModel : ObservableObject
         _poller.Updated += OnSensors;
         Curve = new CurveEditorViewModel(_s.Settings.Curve);
         Battery = new BatteryViewModel(_s, SetBanner);
+        Lighting = new LightingViewModel(_s, SetBanner);
         SettingsVm = new SettingsViewModel(_s);
 
         _bannerState = new BannerState(_s.Profile);
@@ -88,6 +90,9 @@ public partial class MainViewModel : ObservableObject
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _poller.Stop();
+        // A lighting sequence is paced 65 ms per report and there is no window left to show its
+        // result on, so it is dropped rather than held on to on the way out.
+        Lighting.Shutdown();
     }
 
     partial void OnIsWindowVisibleChanged(bool value) =>
