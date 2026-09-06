@@ -80,9 +80,11 @@ public partial class CurveEditor : UserControl
         var i = _vm.Points.IndexOf(_dragging);
         var lo = i > 0 ? _vm.Points[i - 1].Temperature + 1 : 0;
         var hi = i < _vm.Points.Count - 1 ? _vm.Points[i + 1].Temperature - 1 : 100;
+        if (lo > hi) hi = lo;
         _dragging.Temperature = Math.Clamp(t, lo, hi);
         var dlo = i > 0 ? _vm.Points[i - 1].DutyPercent : 0;
         var dhi = i < _vm.Points.Count - 1 ? _vm.Points[i + 1].DutyPercent : 100;
+        if (dlo > dhi) dhi = dlo;
         _dragging.DutyPercent = Math.Clamp(d, dlo, dhi);
     }
 
@@ -91,4 +93,6 @@ public partial class CurveEditor : UserControl
         _dragging = null;
         Plot.ReleaseMouseCapture();
     }
+
+    private void Plot_LostMouseCapture(object s, MouseEventArgs e) => _dragging = null;
 }

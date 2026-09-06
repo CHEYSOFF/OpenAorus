@@ -13,7 +13,7 @@
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right" Width="44" TextAlignment="Right" Text="{Binding FixedPercent, StringFormat={}{0}%}"/>
                 <Slider Minimum="0" Maximum="100" TickFrequency="5" Value="{Binding FixedPercent}" x:Name="FixedSlider"
-                        Thumb.DragCompleted="FixedSlider_DragCompleted"/>
+                        Thumb.DragCompleted="FixedSlider_DragCompleted" KeyUp="FixedSlider_KeyUp"/>
             </DockPanel>
             <TextBlock Style="{StaticResource Muted}" Text="Applied when you release the slider." Margin="0,4,0,0"/>
         </StackPanel>

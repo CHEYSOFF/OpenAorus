@@ -10,7 +10,7 @@
         <Border Grid.Row="0" Background="#FF15171B" CornerRadius="4">
             <Canvas x:Name="Plot" ClipToBounds="True" Background="Transparent"
                     MouseLeftButtonDown="Plot_MouseLeftButtonDown" MouseMove="Plot_MouseMove"
-                    MouseLeftButtonUp="Plot_MouseLeftButtonUp" SizeChanged="Plot_SizeChanged"/>
+                    MouseLeftButtonUp="Plot_MouseLeftButtonUp" LostMouseCapture="Plot_LostMouseCapture" SizeChanged="Plot_SizeChanged"/>
         </Border>
         <DataGrid Grid.Row="1" Margin="0,6,0,6" ItemsSource="{Binding Points}" AutoGenerateColumns="False"
                   CanUserAddRows="False" HeadersVisibility="Column" Background="#FF1E2127" Foreground="#FFE6E8EC"
