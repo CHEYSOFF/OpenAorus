@@ -14,6 +14,10 @@ public partial class MainViewModel : ObservableObject
     private readonly BannerState _bannerState;
     private readonly FanWatchdog _watchdog = new();
 
+    /// <summary>The forced-Turbo failure the owner has already been shown, so a write that keeps
+    /// failing is retried every poll without being announced again every poll.</summary>
+    private string? _reportedWatchdogError;
+
     [ObservableProperty] private FanMode _selectedMode;
     [ObservableProperty] private int _fixedPercent;
     [ObservableProperty] private SensorSnapshot _sensors = SensorSnapshot.Empty;
@@ -45,6 +49,10 @@ public partial class MainViewModel : ObservableObject
         // await it. A poll that forces Turbo runs a write sequence lasting a few seconds, and the
         // watchdog's own latch is what stops the next tick starting a second one on top of it.
         _poller.Updated += snap => _ = OnSensorPollAsync(snap);
+        // Subscribed at the controller rather than at each of the places that apply a mode -
+        // startup, resume, --apply, a mode click - so a call site added later cannot forget to
+        // re-arm. See FanWatchdog.NoteModeApplied for why the forced Turbo has to be let through.
+        _s.Fans.Applied += OnFanModeApplied;
         Curve = new CurveEditorViewModel(_s.Settings.Curve);
         Battery = new BatteryViewModel(_s, SetBanner);
         Lighting = new LightingViewModel(_s, SetBanner);
@@ -105,6 +113,7 @@ public partial class MainViewModel : ObservableObject
     public void Shutdown()
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _s.Fans.Applied -= OnFanModeApplied;
         _poller.Stop();
         // A lighting sequence is paced 65 ms per report and there is no window left to show its
         // result on, so it is dropped rather than held on to on the way out.
@@ -167,8 +176,10 @@ public partial class MainViewModel : ObservableObject
         // arrives during the owner's mode click has to be the one that lands last, not the one
         // that gets dropped.
         var r = await _s.Fans.ApplyAsync(FanMode.Turbo, FixedPercent, _s.Settings.ToCurve());
+        _watchdog.NoteForcedTurbo(r.Success);
         if (r.Success)
         {
+            _reportedWatchdogError = null;
             SelectedMode = FanMode.Turbo;
             StatusLine = $"Fans forced to full at {snap.CpuTemp} °C";
             SetBanner(BannerKind.Warning,
@@ -178,10 +189,27 @@ public partial class MainViewModel : ObservableObject
         else
         {
             StatusLine = "Emergency fan override failed";
-            _bannerState.ReportFailure($"CPU reached {snap.CpuTemp} °C and forcing the fans to full failed: {r.Error}");
-            SyncBanner();
+            // A failed write leaves the watchdog armed, so the next poll a second later tries
+            // again - which is the point, and would also rewrite this banner a second later with
+            // a temperature one degree different. The retries are silent while the same write
+            // keeps failing in the same way; the first report stays up and says so.
+            if (_reportedWatchdogError != r.Error)
+            {
+                _reportedWatchdogError = r.Error;
+                _bannerState.ReportFailure($"CPU reached {snap.CpuTemp} °C and forcing the fans to full failed: {r.Error}");
+                SyncBanner();
+            }
         }
     }
+
+    /// <summary>
+    /// Re-arms the watchdog whenever the fans are put on a mode that is not its own forced Turbo.
+    /// </summary>
+    /// <remarks>Wired to <see cref="FanController.Applied"/> rather than to the callers, because
+    /// the case that needs it most is the one furthest from here: a resume re-applies the owner's
+    /// saved mode over the forced Turbo, and if the CPU never dropped below the re-arm point
+    /// across the sleep the machine would come back hot, slow and unguarded.</remarks>
+    private void OnFanModeApplied(FanMode mode) => _watchdog.NoteModeApplied();
 
     private async void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {

@@ -106,4 +106,43 @@ public class FanWatchdogTests
     {
         Assert.False(new FanWatchdog().HasFired);
     }
+
+    [Fact]
+    public void A_forced_turbo_that_reached_the_controller_keeps_it_latched()
+    {
+        var w = new FanWatchdog();
+        Assert.True(w.Observe(92, 10));
+        w.NoteModeApplied();                // the write it just asked for, landing
+        w.NoteForcedTurbo(applied: true);
+
+        Assert.True(w.HasFired);
+        Assert.False(w.Observe(95, 10));
+    }
+
+    [Fact]
+    public void A_forced_turbo_that_failed_leaves_it_armed_to_try_again()
+    {
+        var w = new FanWatchdog();
+        Assert.True(w.Observe(92, 10));
+        w.NoteForcedTurbo(applied: false);
+
+        // Too hot and no extra cooling: the one state where giving up would be worst.
+        Assert.False(w.HasFired);
+        Assert.True(w.Observe(92, 10));
+    }
+
+    [Fact]
+    public void A_mode_applied_by_anyone_else_re_arms_it_without_waiting_for_the_machine_to_cool()
+    {
+        var w = new FanWatchdog();
+        Assert.True(w.Observe(92, 10));
+        w.NoteForcedTurbo(applied: true);
+
+        // A resume, an --apply or the owner picking a mode: the forced Turbo has been overridden,
+        // so the only thing the latch was protecting is gone.
+        w.NoteModeApplied();
+
+        Assert.False(w.HasFired);
+        Assert.True(w.Observe(92, 10));
+    }
 }

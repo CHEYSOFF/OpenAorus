@@ -18,6 +18,13 @@ public sealed class FanController
 
     public FanMode? LastApplied { get; private set; }
 
+    /// <summary>Raised once a mode's whole write sequence has reached the controller.</summary>
+    /// <remarks>Every way a mode is applied - startup, resume, <c>--apply</c>, a mode click, the
+    /// thermal watchdog - comes through <see cref="ApplyAsync"/>, so a listener that needs to know
+    /// what the fans are actually running can hang off this one place instead of off each caller,
+    /// where the next caller added would be the one that forgot.</remarks>
+    public event Action<FanMode>? Applied;
+
     public FanController(IGigabyteWmi wmi, ModelProfile profile, Func<int, Task>? delay = null)
     {
         _wmi = wmi;
@@ -60,9 +67,13 @@ public sealed class FanController
                     await _delay(StepDelayMs).ConfigureAwait(false);
             }
             LastApplied = mode;
-            return WmiResult.Ok();
         }
         finally { _gate.Release(); }
+
+        // Raised outside the gate: a handler that turns round and applies another mode would
+        // otherwise deadlock on a semaphore this call still holds.
+        Applied?.Invoke(mode);
+        return WmiResult.Ok();
     }
 
     private List<Step> Build(FanMode mode, int fixedPercent, FanCurve curve)

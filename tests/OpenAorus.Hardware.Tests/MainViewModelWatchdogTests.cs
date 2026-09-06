@@ -27,7 +27,7 @@ public class MainViewModelWatchdogTests : IDisposable
 
     public void Dispose() { if (Directory.Exists(_dir)) Directory.Delete(_dir, true); }
 
-    private (MainViewModel vm, FakeGigabyteWmi wmi) Make(ModelProfile? profile = null)
+    private (MainViewModel vm, FakeGigabyteWmi wmi, AppServices services) Make(ModelProfile? profile = null)
     {
         var p = profile ?? ModelProfile.Detect("AORUS 17G KD");
         var wmi = new FakeGigabyteWmi();
@@ -46,7 +46,7 @@ public class MainViewModelWatchdogTests : IDisposable
             Version = "0.0.0",
             ExePath = "OpenAorus.Tests.exe",
         };
-        return (new MainViewModel(services), wmi);
+        return (new MainViewModel(services), wmi, services);
     }
 
     private static SensorSnapshot Poll(int cpu, int duty, bool ok = true) =>
@@ -55,7 +55,7 @@ public class MainViewModelWatchdogTests : IDisposable
     [Fact]
     public async Task A_cpu_at_the_trigger_with_slow_fans_is_pinned_to_full_and_the_owner_is_told()
     {
-        var (vm, wmi) = Make();
+        var (vm, wmi, _) = Make();
 
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
 
@@ -71,7 +71,7 @@ public class MainViewModelWatchdogTests : IDisposable
     [Fact]
     public async Task It_does_not_re_apply_turbo_on_every_poll_while_the_machine_stays_hot()
     {
-        var (vm, wmi) = Make();
+        var (vm, wmi, _) = Make();
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
         wmi.Calls.Clear();
 
@@ -86,7 +86,7 @@ public class MainViewModelWatchdogTests : IDisposable
     [Fact]
     public async Task The_notice_survives_the_polls_that_follow_it()
     {
-        var (vm, _) = Make();
+        var (vm, _, _) = Make();
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
 
         await vm.OnSensorPollAsync(Poll(cpu: 70, duty: 100));
@@ -99,7 +99,7 @@ public class MainViewModelWatchdogTests : IDisposable
     [Fact]
     public async Task A_failed_sensor_read_showing_as_zero_degrees_does_nothing()
     {
-        var (vm, wmi) = Make();
+        var (vm, wmi, _) = Make();
 
         await vm.OnSensorPollAsync(Poll(cpu: 0, duty: 0, ok: false));
 
@@ -110,7 +110,7 @@ public class MainViewModelWatchdogTests : IDisposable
     [Fact]
     public async Task A_cool_machine_is_left_alone()
     {
-        var (vm, wmi) = Make();
+        var (vm, wmi, _) = Make();
 
         await vm.OnSensorPollAsync(Poll(cpu: 62, duty: 30));
 
@@ -121,7 +121,7 @@ public class MainViewModelWatchdogTests : IDisposable
     [Fact]
     public async Task A_machine_already_cooling_itself_is_left_alone()
     {
-        var (vm, wmi) = Make();
+        var (vm, wmi, _) = Make();
 
         await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 100));
 
@@ -134,7 +134,7 @@ public class MainViewModelWatchdogTests : IDisposable
         // The WMI writes are withheld here, so there is nothing the watchdog could do about the
         // temperature - and a warning once a second on top of the banner that already explains
         // the model would be noise, not help.
-        var (vm, wmi) = Make(ModelProfile.Detect("Some Other Laptop"));
+        var (vm, wmi, _) = Make(ModelProfile.Detect("Some Other Laptop"));
 
         await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 0));
         await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 0));
@@ -147,12 +147,66 @@ public class MainViewModelWatchdogTests : IDisposable
     [Fact]
     public async Task A_failed_turbo_write_is_reported_rather_than_swallowed()
     {
-        var (vm, wmi) = Make();
+        var (vm, wmi, _) = Make();
         wmi.FailOn.Add("SetFixedFanSpeed");
 
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
 
         Assert.Equal(BannerKind.Error, vm.Banner);
         Assert.Contains("SetFixedFanSpeed", vm.BannerText);
+    }
+
+    [Fact]
+    public async Task Re_applying_the_saved_mode_re_arms_it_even_though_the_machine_never_cooled()
+    {
+        var (vm, wmi, services) = Make();
+        await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
+
+        // What a resume does: the owner's saved mode goes back on, undoing the forced Turbo. The
+        // CPU never dropped below the re-arm point across the sleep, so the temperature rule alone
+        // would leave the machine back on a slow mode, still hot, with the guard latched shut.
+        await services.ApplySavedAsync();
+        wmi.Calls.Clear();
+
+        await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
+
+        Assert.Contains(wmi.Calls, c => c.Method == "SetFixedFanSpeed" && c.Data == 229);
+        Assert.Equal(FanMode.Turbo, vm.SelectedMode);
+    }
+
+    [Fact]
+    public async Task A_turbo_write_that_failed_is_tried_again_on_the_next_poll()
+    {
+        var (vm, wmi, _) = Make();
+        wmi.FailOn.Add("SetFixedFanSpeed");
+
+        await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
+        wmi.Calls.Clear();
+        wmi.FailOn.Clear();
+
+        await vm.OnSensorPollAsync(Poll(cpu: 93, duty: 10));
+
+        Assert.Contains(wmi.Calls, c => c.Method == "SetFixedFanStatus" && c.Data == 1);
+        Assert.Contains("Fans forced to full", vm.BannerText);
+    }
+
+    [Fact]
+    public async Task A_turbo_write_that_keeps_failing_is_retried_without_a_fresh_notice_each_poll()
+    {
+        var (vm, wmi, _) = Make();
+        wmi.FailOn.Add("SetFixedFanSpeed");
+
+        await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
+        await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
+        await vm.OnSensorPollAsync(Poll(cpu: 97, duty: 10));
+
+        // Every poll retries - that is the point of not latching on a failure ...
+        Assert.Equal(3, wmi.Calls.Count(c => c.Method == "SetFixedFanSpeed"));
+        // ... but the owner is told once. The banner still carries the first report, not a
+        // rewrite from a second later naming a temperature one degree different.
+        Assert.Equal(BannerKind.Error, vm.Banner);
+        Assert.Contains("92", vm.BannerText);
+        Assert.DoesNotContain("95", vm.BannerText);
+        Assert.DoesNotContain("97", vm.BannerText);
     }
 }

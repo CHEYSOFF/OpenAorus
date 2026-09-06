@@ -232,4 +232,33 @@ public class FanControllerTests
         Assert.Equal(1, wmi.Calls[^1].Data); // Quiet ran entirely after Normal
         Assert.Equal(FanMode.Quiet, ctl.LastApplied);
     }
+
+    [Fact]
+    public async Task An_applied_mode_is_announced_once_the_sequence_has_landed()
+    {
+        var (ctl, _) = Make();
+        var announced = new List<FanMode>();
+        ctl.Applied += m => announced.Add(m);
+
+        await ctl.ApplyAsync(FanMode.Quiet);
+        await ctl.ApplyAsync(FanMode.Turbo);
+
+        Assert.Equal(new[] { FanMode.Quiet, FanMode.Turbo }, announced);
+    }
+
+    [Fact]
+    public async Task A_sequence_that_failed_part_way_announces_nothing()
+    {
+        // Half a sequence is not a mode the fans are running, and a listener told otherwise would
+        // be acting on a machine that is still on whatever it was on before.
+        var (ctl, wmi) = Make();
+        wmi.FailOn.Add("SetFixedFanSpeed");
+        var announced = 0;
+        ctl.Applied += _ => announced++;
+
+        var r = await ctl.ApplyAsync(FanMode.Turbo);
+
+        Assert.False(r.Success);
+        Assert.Equal(0, announced);
+    }
 }

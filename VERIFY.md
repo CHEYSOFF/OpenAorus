@@ -98,9 +98,17 @@ something; only that one checks that what it *did* accept still cools the machin
 - [ ] Load the machine until the CPU passes 90 °C in a mode whose duty is under 80 % -
       Quiet under a stress test is the usual way there. Within a second or two the fans
       go to full, the mode selection moves to Turbo, and the banner reads
-      `Fans forced to full: CPU reached <n> °C`. It must say that **once**: watch for a
-      further half minute and confirm the fans are not being re-driven every second, and
-      that the banner does not clear itself while the machine is still hot
+      `Fans forced to full: CPU reached <n> °C`. As long as nothing else touches the fans
+      it must say that **once**: watch for a further half minute and confirm the fans are
+      not being re-driven every second, and that the banner does not clear itself while
+      the machine is still hot
+- [ ] Keep the load on, and while the fans are still forced to full click **Quiet**. The
+      fans drop, and then within a few seconds - as soon as the lagging duty read-back
+      has come down with them - the watchdog forces them back to full and says so again.
+      The mode you picked replaced the Turbo it had applied, which is the whole reason it
+      was holding off. This stands in for the case that is awkward to stage by hand: on a
+      resume the saved mode is re-applied the same way, and a machine that stayed hot
+      across the sleep would otherwise come back on a slow mode with nothing watching it
 - [ ] **The one that matters.** Set a custom curve you would actually use, click Apply,
       quit the app from the tray, and then load the machine with nothing of OpenAorus
       running. The fans must ramp as the temperature climbs. If they sit at the low end
