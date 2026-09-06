@@ -103,7 +103,10 @@ values as 17G KD). Anything else → read-only mode.
 
 ```
 OpenAorus.sln
-├─ src/OpenAorus.Hardware/        net8.0 class library, no UI references
+├─ src/OpenAorus.Hardware/        net8.0-windows class library (Directory.Build.props sets one TargetFramework
+│                                  for the whole solution; nothing here forced the -windows suffix on its own).
+│                                  Holds one small UI-facing type, Ui/BannerState.cs, deliberately kept out of
+│                                  OpenAorus.App so its banner-precedence logic could be unit-tested without WPF
 │   ├─ IGigabyteWmi.cs            Invoke(Get|Set, method, args) → dictionary of out params
 │   ├─ GigabyteWmi.cs             System.Management implementation
 │   ├─ ModelProfile.cs            capability table + detection

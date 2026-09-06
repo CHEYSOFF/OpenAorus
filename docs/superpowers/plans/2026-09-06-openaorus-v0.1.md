@@ -41,11 +41,11 @@ src/OpenAorus.Hardware/Battery/BatteryController.cs    policy 0/4 + stop 60..100
 src/OpenAorus.Hardware/Diagnostics/DiagnosticsDump.cs  every Get* → text
 src/OpenAorus.Hardware/Config/AppSettings.cs           POCO
 src/OpenAorus.Hardware/Config/SettingsStore.cs         JSON load/save, .bad on corruption
-src/OpenAorus.Hardware/System/IGccSystem.cs            OS actions seam (task, run key, service, processes)
-src/OpenAorus.Hardware/System/GccTakeover.cs           takeover/restore bookkeeping (pure)
-src/OpenAorus.Hardware/System/WindowsGccSystem.cs      real schtasks / registry / sc / Process impl
-src/OpenAorus.Hardware/System/StartupTask.cs           schtasks logon task for OpenAorus itself
-src/OpenAorus.Hardware/System/Elevation.cs             IsElevated / RelaunchElevated
+src/OpenAorus.Hardware/Platform/IGccSystem.cs            OS actions seam (task, run key, service, processes)
+src/OpenAorus.Hardware/Platform/GccTakeover.cs           takeover/restore bookkeeping (pure)
+src/OpenAorus.Hardware/Platform/WindowsGccSystem.cs      real schtasks / registry / sc / Process impl
+src/OpenAorus.Hardware/Platform/StartupTask.cs           schtasks logon task for OpenAorus itself
+src/OpenAorus.Hardware/Platform/Elevation.cs             IsElevated / RelaunchElevated
 src/OpenAorus.App/OpenAorus.App.csproj                 UseWPF + UseWindowsForms, CommunityToolkit.Mvvm
 src/OpenAorus.App/App.xaml(.cs)                        startup: args, elevation, services, CLI modes
 src/OpenAorus.App/AppServices.cs                       composition root
@@ -1472,7 +1472,7 @@ public class DiagnosticsDumpTests
         var text = DiagnosticsDump.Render(wmi, ModelProfile.Detect("AORUS 17G KD"), "0.1.0-test");
 
         Assert.Contains("OpenAorus 0.1.0-test", text);
-        Assert.Contains("Model: AORUS 17G KD (Tested, DutyMax=229)", text);
+        Assert.Contains("Model: AORUS 17G KD (Tested, DutyMax=229, Fans=2)", text);
         Assert.Contains("getCpuTemp: Data=61", text);
         Assert.Contains("GetVRStatus: ERROR", text);
         Assert.All(DiagnosticsDump.GetMethods, m => Assert.Contains(m + ":", text));
@@ -1766,7 +1766,7 @@ git commit -m "Add AppSettings and JSON SettingsStore"
 ### Task 10: GCC takeover bookkeeping and Windows implementation
 
 **Files:**
-- Create: `src/OpenAorus.Hardware/System/IGccSystem.cs`, `src/OpenAorus.Hardware/System/GccTakeover.cs`, `src/OpenAorus.Hardware/System/WindowsGccSystem.cs`
+- Create: `src/OpenAorus.Hardware/Platform/IGccSystem.cs`, `src/OpenAorus.Hardware/Platform/GccTakeover.cs`, `src/OpenAorus.Hardware/Platform/WindowsGccSystem.cs`
 - Modify: `src/OpenAorus.Hardware/Config/AppSettings.cs` (add `Takeover` property)
 - Test: `tests/OpenAorus.Hardware.Tests/GccTakeoverTests.cs`
 
@@ -1783,7 +1783,7 @@ git commit -m "Add AppSettings and JSON SettingsStore"
 `tests/OpenAorus.Hardware.Tests/GccTakeoverTests.cs`:
 
 ```csharp
-using OpenAorus.Hardware.System;
+using OpenAorus.Hardware.Platform;
 
 namespace OpenAorus.Hardware.Tests;
 
@@ -1884,10 +1884,10 @@ Expected: compile error.
 
 - [ ] **Step 3: Implement the seam and pure logic**
 
-`src/OpenAorus.Hardware/System/IGccSystem.cs`:
+`src/OpenAorus.Hardware/Platform/IGccSystem.cs`:
 
 ```csharp
-namespace OpenAorus.Hardware.System;
+namespace OpenAorus.Hardware.Platform;
 
 /// <summary>OS actions needed to park Gigabyte Control Center. Real impl: <see cref="WindowsGccSystem"/>.</summary>
 public interface IGccSystem
@@ -1907,10 +1907,10 @@ public interface IGccSystem
 }
 ```
 
-`src/OpenAorus.Hardware/System/GccTakeover.cs`:
+`src/OpenAorus.Hardware/Platform/GccTakeover.cs`:
 
 ```csharp
-namespace OpenAorus.Hardware.System;
+namespace OpenAorus.Hardware.Platform;
 
 public sealed class GccTakeoverState
 {
@@ -1970,19 +1970,19 @@ public static class GccTakeover
 Add to `AppSettings`:
 
 ```csharp
-public OpenAorus.Hardware.System.GccTakeoverState? Takeover { get; set; }
+public OpenAorus.Hardware.Platform.GccTakeoverState? Takeover { get; set; }
 ```
 
 - [ ] **Step 4: Implement the Windows side** (no unit tests; verified by owner in Task 15)
 
-`src/OpenAorus.Hardware/System/WindowsGccSystem.cs`:
+`src/OpenAorus.Hardware/Platform/WindowsGccSystem.cs`:
 
 ```csharp
 using System.Diagnostics;
 using System.ServiceProcess;
 using Microsoft.Win32;
 
-namespace OpenAorus.Hardware.System;
+namespace OpenAorus.Hardware.Platform;
 
 public sealed class WindowsGccSystem : IGccSystem
 {
@@ -2097,7 +2097,7 @@ git commit -m "Add reversible GCC takeover with IGccSystem seam and Windows impl
 ### Task 11: Startup task and elevation helpers
 
 **Files:**
-- Create: `src/OpenAorus.Hardware/System/StartupTask.cs`, `src/OpenAorus.Hardware/System/Elevation.cs`
+- Create: `src/OpenAorus.Hardware/Platform/StartupTask.cs`, `src/OpenAorus.Hardware/Platform/Elevation.cs`
 - Test: `tests/OpenAorus.Hardware.Tests/StartupTaskTests.cs`
 
 **Interfaces:**
@@ -2110,7 +2110,7 @@ git commit -m "Add reversible GCC takeover with IGccSystem seam and Windows impl
 `tests/OpenAorus.Hardware.Tests/StartupTaskTests.cs`:
 
 ```csharp
-using OpenAorus.Hardware.System;
+using OpenAorus.Hardware.Platform;
 
 namespace OpenAorus.Hardware.Tests;
 
@@ -2144,12 +2144,12 @@ Expected: compile error.
 
 - [ ] **Step 3: Implement**
 
-`src/OpenAorus.Hardware/System/StartupTask.cs`:
+`src/OpenAorus.Hardware/Platform/StartupTask.cs`:
 
 ```csharp
 using System.Diagnostics;
 
-namespace OpenAorus.Hardware.System;
+namespace OpenAorus.Hardware.Platform;
 
 /// <summary>
 /// "Start with Windows" via a logon task with RunLevel Highest, so the tray app starts elevated without a UAC prompt.
@@ -2191,13 +2191,13 @@ public static class StartupTask
 }
 ```
 
-`src/OpenAorus.Hardware/System/Elevation.cs`:
+`src/OpenAorus.Hardware/Platform/Elevation.cs`:
 
 ```csharp
 using System.Diagnostics;
 using System.Security.Principal;
 
-namespace OpenAorus.Hardware.System;
+namespace OpenAorus.Hardware.Platform;
 
 public static class Elevation
 {
@@ -2261,7 +2261,7 @@ using OpenAorus.Hardware.Diagnostics;
 using OpenAorus.Hardware.Fans;
 using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Sensors;
-using OpenAorus.Hardware.System;
+using OpenAorus.Hardware.Platform;
 using OpenAorus.Hardware.Wmi;
 
 namespace OpenAorus.App;
@@ -2378,7 +2378,7 @@ Create a placeholder `src/OpenAorus.App/Themes/Dark.xaml` now (Task 14 fills it)
 
 ```csharp
 using System.Windows;
-using OpenAorus.Hardware.System;
+using OpenAorus.Hardware.Platform;
 
 namespace OpenAorus.App;
 
@@ -2729,7 +2729,7 @@ git commit -m "Add MainViewModel with mode commands, sensor polling and resume r
         <Setter Property="Padding" Value="10"/>
         <Setter Property="Margin" Value="0,0,0,8"/>
     </Style>
-    <!-- Mode buttons: selected state comes from Tag (bound to SelectedMode == X), never from a local IsChecked,
+    <!-- Mode buttons: selected state comes from Tag ("Selected"/"Unselected"), never from a local IsChecked,
          because a click on a ToggleButton would replace a one-way IsChecked binding with a local value. -->
     <Style x:Key="ModeButton" TargetType="Button">
         <Setter Property="Foreground" Value="{StaticResource Fg}"/>
@@ -2757,7 +2757,7 @@ git commit -m "Add MainViewModel with mode commands, sensor polling and resume r
             </Setter.Value>
         </Setter>
         <Style.Triggers>
-            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Selected">
                 <Setter Property="Background" Value="{StaticResource Accent}"/>
                 <Setter Property="Foreground" Value="{StaticResource AccentFg}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
@@ -2812,11 +2812,18 @@ using OpenAorus.App.ViewModels;
 
 namespace OpenAorus.App;
 
-/// <summary>Button.Tag ⇐ (SelectedMode == parameter). Drives the selected look; clicks go through the command.</summary>
+/// <summary>
+/// Button.Tag ⇐ "Selected" / "Unselected" for (SelectedMode == parameter); clicks go through the command.
+/// Returns a string, not a bool: Tag is typed object, and a DataTrigger comparing an object-typed
+/// value against Value="True" compares a string to a boxed bool and never fires.
+/// </summary>
 public sealed class EnumEqualsConverter : IValueConverter
 {
+    public const string Selected = "Selected";
+    public const string Unselected = "Unselected";
+
     public object Convert(object value, Type t, object parameter, CultureInfo c) =>
-        value is not null && parameter is not null && value.ToString() == parameter.ToString();
+        value is not null && parameter is not null && value.ToString() == parameter.ToString() ? Selected : Unselected;
     public object ConvertBack(object value, Type t, object parameter, CultureInfo c) => Binding.DoNothing;
 }
 
@@ -2996,11 +3003,11 @@ public sealed class TrayIcon : IDisposable
 
         <!-- Context panel: filled by Task 15 (Fixed slider, curve editor) and mode descriptions -->
         <Border Grid.Row="3" Style="{StaticResource CardStyle}">
-            <ContentControl x:Name="ContextPanel"/>
+            <ContentControl x:Name="ContextHost"/>
         </Border>
 
         <!-- Battery card: Task 16 -->
-        <ContentControl Grid.Row="4" x:Name="BatteryPanel"/>
+        <ContentControl Grid.Row="4" x:Name="BatteryHost"/>
 
         <!-- Footer -->
         <DockPanel Grid.Row="5" LastChildFill="True">
@@ -3455,7 +3462,7 @@ public partial class ContextPanel : UserControl
 In `MainWindow.xaml.cs` constructor, after `DataContext = vm;`:
 
 ```csharp
-        ContextPanel.Content = new ContextPanel { DataContext = vm };
+        ContextHost.Content = new ContextPanel { DataContext = vm };
 ```
 
 - [ ] **Step 4: Build and OWNER VERIFY**
@@ -3546,7 +3553,7 @@ public partial class BatteryViewModel : ObservableObject
 ```csharp
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using OpenAorus.Hardware.System;
+using OpenAorus.Hardware.Platform;
 
 namespace OpenAorus.App.ViewModels;
 
@@ -3697,7 +3704,7 @@ public partial class BatteryPanel : UserControl
 }
 ```
 
-In `MainWindow.xaml.cs` constructor: `BatteryPanel.Content = new BatteryPanel { DataContext = vm.Battery };`
+In `MainWindow.xaml.cs` constructor: `BatteryHost.Content = new BatteryPanel { DataContext = vm.Battery };`
 
 - [ ] **Step 4: Settings window**
 

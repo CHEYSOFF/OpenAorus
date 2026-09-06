@@ -8,3 +8,4 @@ obj/
 TestResults/
 publish/
 *.log
+.superpowers/

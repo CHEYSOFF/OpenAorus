@@ -1,0 +1,35 @@
+<UserControl x:Class="OpenAorus.App.Views.ContextPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="clr-namespace:OpenAorus.App"
+             xmlns:views="clr-namespace:OpenAorus.App.Views">
+    <UserControl.Resources>
+        <app:EnumEqualsVisibilityConverter x:Key="EnumVis"/>
+    </UserControl.Resources>
+    <Grid>
+        <!-- Fixed -->
+        <StackPanel Visibility="{Binding SelectedMode, Converter={StaticResource EnumVis}, ConverterParameter=Fixed}">
+            <TextBlock Text="Fixed duty for both fans" Margin="0,0,0,6"/>
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Width="44" TextAlignment="Right" Text="{Binding FixedPercent, StringFormat={}{0}%}"/>
+                <Slider Minimum="0" Maximum="100" TickFrequency="5" Value="{Binding FixedPercent}" x:Name="FixedSlider"
+                        Thumb.DragCompleted="FixedSlider_DragCompleted" KeyUp="FixedSlider_KeyUp"/>
+            </DockPanel>
+            <TextBlock Style="{StaticResource Muted}" Text="Applied when you release the slider." Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Custom -->
+        <views:CurveEditor x:Name="Editor" DataContext="{Binding Curve}"
+                           Visibility="{Binding DataContext.SelectedMode, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource EnumVis}, ConverterParameter=Custom}"/>
+
+        <!-- Descriptions -->
+        <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" Visibility="{Binding SelectedMode, Converter={StaticResource EnumVis}, ConverterParameter=Quiet}"
+                   Text="Quiet: firmware fan table with the EC's 'quiet' bias. Lowest noise, thermals a little higher."/>
+        <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" Visibility="{Binding SelectedMode, Converter={StaticResource EnumVis}, ConverterParameter=Normal}"
+                   Text="Normal: the EC's default fan table."/>
+        <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" Visibility="{Binding SelectedMode, Converter={StaticResource EnumVis}, ConverterParameter=Gaming}"
+                   Text="Gaming: EC auto mode with an aggressive table. What GCC calls Gaming / Power."/>
+        <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" Visibility="{Binding SelectedMode, Converter={StaticResource EnumVis}, ConverterParameter=Turbo}"
+                   Text="Turbo: both fans pinned at 100 %."/>
+    </Grid>
+</UserControl>

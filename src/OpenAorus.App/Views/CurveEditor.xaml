@@ -1,0 +1,38 @@
+<UserControl x:Class="OpenAorus.App.Views.CurveEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="160"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Border Grid.Row="0" Background="#FF15171B" CornerRadius="4">
+            <Canvas x:Name="Plot" ClipToBounds="True" Background="Transparent"
+                    MouseLeftButtonDown="Plot_MouseLeftButtonDown" MouseMove="Plot_MouseMove"
+                    MouseLeftButtonUp="Plot_MouseLeftButtonUp" LostMouseCapture="Plot_LostMouseCapture" SizeChanged="Plot_SizeChanged"/>
+        </Border>
+        <DataGrid Grid.Row="1" Margin="0,6,0,6" ItemsSource="{Binding Points}" AutoGenerateColumns="False"
+                  CanUserAddRows="False" HeadersVisibility="Column" Background="#FF1E2127" Foreground="#FFE6E8EC"
+                  RowBackground="#FF1E2127" AlternatingRowBackground="#FF23272E" GridLinesVisibility="None"
+                  BorderThickness="0" MaxHeight="140" SelectionMode="Single" x:Name="Table">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="°C" Binding="{Binding Temperature, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn Header="Duty %" Binding="{Binding DutyPercent, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTemplateColumn Width="40">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="✕" Padding="4,0" Command="{Binding DataContext.RemovePointCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+        <DockPanel Grid.Row="2">
+            <Button DockPanel.Dock="Right" Content="Apply" Margin="6,0,0,0" x:Name="ApplyButton"/>
+            <Button DockPanel.Dock="Right" Content="Reset" Margin="6,0,0,0" Command="{Binding ResetCommand}"/>
+            <Button DockPanel.Dock="Right" Content="+ Point" Command="{Binding AddPointCommand}"/>
+            <TextBlock Text="{Binding ValidationText}" VerticalAlignment="Center" Foreground="#FF8B919C"/>
+        </DockPanel>
+    </Grid>
+</UserControl>
