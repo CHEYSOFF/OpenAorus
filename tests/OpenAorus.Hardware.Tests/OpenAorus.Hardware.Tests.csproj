@@ -21,4 +21,10 @@
     <ProjectReference Include="..\..\src\OpenAorus.Hardware\OpenAorus.Hardware.csproj" />
   </ItemGroup>
 
+  <!-- The recovered key orders are test data: KeyLayoutTests compares the C# arrays
+       against these files rather than against a hand-copied subset. -->
+  <ItemGroup>
+    <None Include="..\..\docs\research\ione-keymap-eng-*.txt" CopyToOutputDirectory="PreserveNewest" Link="keymaps\%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace OpenAorus.Hardware.Lighting;
 
 /// <summary>
@@ -25,6 +27,8 @@ namespace OpenAorus.Hardware.Lighting;
 /// </summary>
 public static class EffectPacket
 {
+    /// <summary>Where each effect's configuration slice starts, relative to byte 13.</summary>
+    /// <remarks>Frozen so a caller cannot cast it back and corrupt the shared table.</remarks>
     public static IReadOnlyDictionary<LightEffect, int> Offsets { get; } = new Dictionary<LightEffect, int>
     {
         [LightEffect.Static] = 0,
@@ -46,7 +50,7 @@ public static class EffectPacket
         [LightEffect.Merge] = 78,
         [LightEffect.Crash] = 86,
         [LightEffect.Custom] = 0,
-    };
+    }.ToFrozenDictionary();
 
     private static readonly HashSet<LightEffect> NoColor = new()
     {
@@ -98,8 +102,13 @@ public static class EffectPacket
         _ => 0,
     };
 
+    /// <summary>Builds the 264-byte "set effect" report for these parameters.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="p"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The effect id is not one this protocol defines.</exception>
     public static byte[] Build(EffectParameters p)
     {
+        ArgumentNullException.ThrowIfNull(p);
+
         var packet = new byte[KeyboardHid.ReportLength];
         packet[0] = KeyboardHid.ReportId;
         packet[1] = 0x02;
@@ -107,7 +116,13 @@ public static class EffectPacket
         packet[11] = p.Effect is LightEffect.Static or LightEffect.StarShining ? (byte)0xFF : (byte)0x00;
         packet[12] = (byte)Math.Clamp(p.BrightnessPercent, 0, 100);
 
-        var at = 13 + Offsets[p.Effect];
+        // These parameters get persisted and read back, so a stale or hand-edited id is a
+        // realistic input. It is a programming or persistence error, not a user range, so
+        // it throws rather than clamping to some arbitrary effect.
+        if (!Offsets.TryGetValue(p.Effect, out var offset))
+            throw new ArgumentOutOfRangeException(nameof(p), p.Effect, "Unknown lighting effect id.");
+
+        var at = 13 + offset;
         var speed = (byte)EncodeSpeed(p.SpeedPercent);
         var random = p.Random ? (byte)1 : (byte)0;
         var direction = EncodeDirection(p.Effect, p.Direction);
@@ -164,9 +179,12 @@ public static class EffectPacket
 
             default:
                 // Breathing, Firework, Ripple, Rain, Trigger, Pulse, StarShining, Cross:
-                // 5-byte slice, speed + random + colour.
+                // 5-byte slice, speed + random + colour. Breathing and Ripple are the
+                // exception: their second byte is an unidentified firmware mode selector,
+                // not the random flag. Random travels across effect switches in one
+                // EffectParameters record, so it must not leak into that selector here.
                 packet[at] = speed;
-                packet[at + 1] = random;
+                packet[at + 1] = SupportsRandom(p.Effect) ? random : (byte)0;
                 WriteColor(packet, at + 2, p.Color);
                 break;
         }

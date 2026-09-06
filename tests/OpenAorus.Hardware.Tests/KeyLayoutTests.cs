@@ -1,9 +1,57 @@
+using System.IO;
+using System.Text;
 using OpenAorus.Hardware.Lighting;
 
 namespace OpenAorus.Hardware.Tests;
 
 public class KeyLayoutTests
 {
+    /// <summary>
+    /// Pulls every quoted name out of a recovered keymap file, in order. The files are
+    /// Python source, so an entry is single- or double-quoted ('\\' for the backslash key,
+    /// "'" for the apostrophe key) and a backslash escapes the character after it.
+    /// </summary>
+    private static List<string> ReadRecoveredOrder(string fileName)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "keymaps", fileName);
+        var text = File.ReadAllText(path);
+        var names = new List<string>();
+
+        var i = 0;
+        while (i < text.Length)
+        {
+            var quote = text[i];
+            if (quote != '\'' && quote != '"') { i++; continue; }
+
+            i++;
+            var name = new StringBuilder();
+            while (i < text.Length && text[i] != quote)
+            {
+                if (text[i] == '\\' && i + 1 < text.Length) i++;
+                name.Append(text[i]);
+                i++;
+            }
+            i++; // closing quote
+            names.Add(name.ToString());
+        }
+
+        return names;
+    }
+
+    [Theory]
+    [InlineData(KeyboardLayout.EngUs, "ione-keymap-eng-us.txt")]
+    [InlineData(KeyboardLayout.EngUk, "ione-keymap-eng-uk.txt")]
+    public void Every_slot_matches_the_recovered_file(KeyboardLayout layout, string fileName)
+    {
+        // Compares all 128 slots against the source of truth rather than a hand-copied
+        // subset: an edit applied identically to both arrays at a non-anchor slot used to
+        // go undetected, and that is exactly the "colour lands on the wrong key" failure
+        // this data exists to prevent.
+        var recovered = ReadRecoveredOrder(fileName);
+        Assert.Equal(KeyLayout.SlotCount, recovered.Count);
+        Assert.Equal(recovered, KeyLayout.For(layout).Slots);
+    }
+
     [Theory]
     [InlineData(KeyboardLayout.EngUs)]
     [InlineData(KeyboardLayout.EngUk)]
@@ -22,8 +70,8 @@ public class KeyLayoutTests
     [Theory]
     [InlineData(KeyboardLayout.EngUs)]
     [InlineData(KeyboardLayout.EngUk)]
-    public void A_layout_populates_around_a_hundred_real_keys(KeyboardLayout layout)
-        => Assert.InRange(KeyLayout.For(layout).RealKeys.Count(), 95, 110);
+    public void A_layout_populates_exactly_101_real_keys(KeyboardLayout layout)
+        => Assert.Equal(101, KeyLayout.For(layout).RealKeys.Count());
 
     [Fact]
     public void Known_slots_match_the_recovered_order()
@@ -58,6 +106,23 @@ public class KeyLayoutTests
         Assert.Equal(KeyboardLayout.EngUk, KeyLayout.ForProduct(0x7A3D).Layout);
         Assert.Equal(KeyboardLayout.EngUs, KeyLayout.ForProduct(0x7A3C).Layout);
     }
+
+    [Theory]
+    [InlineData((ushort)0x7A3F)]
+    [InlineData((ushort)0x0000)]
+    public void An_unknown_product_id_falls_back_to_the_US_order(ushort productId)
+    {
+        // 0x7A3F is in KeyboardHid.SupportedPids and will open, but nothing is known about
+        // its slot order. Defaulting keeps lighting working on an otherwise fine machine;
+        // this records the choice so a "every key one column off" report leads here.
+        Assert.Equal(KeyboardLayout.EngUs, KeyLayout.ForProduct(productId).Layout);
+    }
+
+    [Theory]
+    [InlineData(KeyboardLayout.EngUs)]
+    [InlineData(KeyboardLayout.EngUk)]
+    public void Slots_cannot_be_cast_back_to_a_mutable_array(KeyboardLayout layout)
+        => Assert.IsNotType<string[]>(KeyLayout.For(layout).Slots);
 
     [Fact]
     public void NameAt_rejects_a_slot_outside_the_report()
@@ -133,7 +198,12 @@ public class KeyLayoutTests
     [InlineData(KeyboardLayout.EngUs)]
     [InlineData(KeyboardLayout.EngUk)]
     public void Every_slot_holds_a_non_empty_name(KeyboardLayout layout)
-        => Assert.All(KeyLayout.For(layout).Slots, name => Assert.False(string.IsNullOrWhiteSpace(name)));
+    {
+        Assert.All(KeyLayout.For(layout).Slots, name => Assert.False(string.IsNullOrWhiteSpace(name)));
+        // The arrays spell "N/A" out verbatim to stay character-for-character faithful to
+        // the recovered files; this pins that spelling to the constant callers compare with.
+        Assert.Contains(KeyLayout.Unused, KeyLayout.For(layout).Slots);
+    }
 
     [Theory]
     [InlineData(KeyboardLayout.EngUs)]

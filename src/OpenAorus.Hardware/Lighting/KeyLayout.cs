@@ -62,6 +62,9 @@ public sealed class KeyLayout
         "N/A", "Shift-L", "Shift-R", "N/A", "WinKey", "Fn", "N/A", "N/A",
     };
 
+    // These run after the two arrays above only because static field initialisers run in
+    // textual order; a layout array pasted below them would initialise to null and fail as
+    // a TypeInitializationException that points nowhere useful. Keep them last.
     private static readonly KeyLayout Us = new(KeyboardLayout.EngUs, EngUsSlots);
     private static readonly KeyLayout Uk = new(KeyboardLayout.EngUk, EngUkSlots);
 
@@ -76,13 +79,21 @@ public sealed class KeyLayout
         if (slots.Length != SlotCount)
             throw new InvalidOperationException($"{layout} layout must define exactly {SlotCount} slots, found {slots.Length}.");
         Layout = layout;
-        Slots = slots;
+        // Wrapped, not assigned: the property type alone would let a caller cast back to
+        // string[] and mutate this shared static table for the life of the process.
+        Slots = Array.AsReadOnly(slots);
     }
 
     /// <summary>The map for a variant.</summary>
     public static KeyLayout For(KeyboardLayout layout) => layout == KeyboardLayout.EngUk ? Uk : Us;
 
-    /// <summary>Gigabyte's software treats 0x7A3D as the UK slot order and 0x7A3C as US.</summary>
+    /// <summary>
+    /// The slot order to assume for a product id. Gigabyte's software treats 0x7A3D as the
+    /// UK order and 0x7A3C as US; every other id, including the supported-but-unstudied
+    /// 0x7A3F, falls back to US. That fallback is a guess, not a fact: there is no evidence
+    /// about 0x7A3F's order, and defaulting keeps lighting working on a machine that opens
+    /// fine. If a user reports every key lit one column off, this is the place to revisit.
+    /// </summary>
     public static KeyLayout ForProduct(ushort productId) => productId == 0x7A3D ? Uk : Us;
 
     /// <summary>The key at a slot.</summary>
