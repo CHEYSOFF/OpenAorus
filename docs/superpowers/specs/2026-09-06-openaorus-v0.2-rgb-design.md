@@ -143,6 +143,30 @@ window stays the same width; only its height grows when Lighting is selected.
 - GCC's own lighting service may fight over the device while it runs; v0.1's takeover
   already stops those processes.
 
+## 6a. Amendment: effect writes are read-modify-write
+
+Added after the Task 2 review, which found that the original design silently assumed
+something it never stated.
+
+Every effect stores its configuration in its own slice of one shared block, and command
+`0x82` reads that whole 264-byte block back. The keyboard therefore holds the block. It
+follows that sending a freshly zeroed buffer with only the active effect's slice filled
+would erase every other effect's saved configuration on each switch: set up Wave, switch
+to Ripple, come back, and Wave is at defaults.
+
+`LightingController` must instead read with `0x82`, patch only the active slice, and write
+back with `0x02`. If the read fails it falls back to a zeroed buffer, which is the current
+behaviour and no worse than it.
+
+This is correct whether the firmware persists the whole block as received or reads only
+the slice belonging to the selected mode, so it does not wait on hardware to justify. It
+costs one extra feature report per change, well inside the 65 ms pacing budget.
+
+`EffectPacket` accordingly needs an overload that patches a caller-supplied buffer rather
+than only allocating a new one.
+
+Per-key colours are unaffected: they live in separate storage and survive a `0x02` write.
+
 ## 7. Attribution
 
 The protocol was reconstructed from Gigabyte's own binaries and cross-checked against
