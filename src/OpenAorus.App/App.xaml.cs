@@ -21,7 +21,9 @@ public partial class App : System.Windows.Application
         {
             base.OnStartup(e);
             var args = e.Args.Select(a => a.ToLowerInvariant()).ToArray();
-            StartHidden = args.Contains("--tray");
+            // --tray starts hidden in the tray (used by the scheduled autostart task); --show forces the
+            // window visible even alongside --tray; anything else defaults to visible.
+            StartHidden = args.Contains("--tray") && !args.Contains("--show");
 
             if (!Elevation.IsElevated())
             {
