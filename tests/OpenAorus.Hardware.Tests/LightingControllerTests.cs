@@ -409,6 +409,49 @@ public class LightingControllerTests
         Assert.True((await ctl.ApplyEffectAsync(EffectParameters.Default(LightEffect.Static))).Success);
     }
 
+    /// <summary>
+    /// The check between the colour pages and the mode selection. Cancelling on the second
+    /// pause means the colours are written but the keyboard has not been switched to them;
+    /// without the check the selection goes ahead anyway and a cancelled apply still puts a
+    /// 0x82 status read - and then the mode change behind it - on the wire.
+    /// </summary>
+    [Fact]
+    public async Task Cancelling_after_the_colour_pages_stops_before_custom_is_selected()
+    {
+        var hid = new FakeKeyboardHid();
+        var cts = new CancellationTokenSource();
+        var pauses = 0;
+        var ctl = new LightingController(
+            hid, KeyLayout.For(KeyboardLayout.EngUk), _ => { if (++pauses == 2) cts.Cancel(); return Task.CompletedTask; });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ctl.ApplyPerKeyAsync(Solid(RgbColor.White), 50, cts.Token));
+
+        Assert.Equal(2, hid.Written.Count);
+        Assert.Equal(0x06, hid.Command(0));
+        Assert.Equal(0x06, hid.Command(1));
+    }
+
+    /// <summary>
+    /// The same check inside the effect selection itself, which is the one a brightness slider
+    /// cancels when the window closes under it: the status read has gone out, and the write
+    /// that would change the lighting must not follow it.
+    /// </summary>
+    [Fact]
+    public async Task Cancelling_an_effect_apply_stops_after_the_status_read()
+    {
+        var hid = new FakeKeyboardHid();
+        var cts = new CancellationTokenSource();
+        var ctl = new LightingController(
+            hid, KeyLayout.For(KeyboardLayout.EngUk), _ => { cts.Cancel(); return Task.CompletedTask; });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ctl.ApplyEffectAsync(EffectParameters.Default(LightEffect.Static), cts.Token));
+
+        var only = Assert.Single(hid.Written);
+        Assert.Equal(0x82, only[1]);
+    }
+
     [Fact]
     public async Task An_already_cancelled_token_writes_nothing()
     {

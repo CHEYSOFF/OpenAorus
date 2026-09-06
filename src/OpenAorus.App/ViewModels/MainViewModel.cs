@@ -135,6 +135,9 @@ public partial class MainViewModel : ObservableObject
             await Task.Delay(3000); // let the EC and WMI provider wake up
             // Same reasoning as the startup apply: a read-only model still gets its lighting
             // back after a wake, and its expected "read-only model" result is not a status line.
+            // Left unpinned on purpose - this is a private async void handler behind a hard-coded
+            // delay, and the seam needed to reach it would cost more than the duplicate it covers.
+            // MainViewModelStartupTests pins the same decision where startup makes it.
             var r = await _s.ApplySavedAsync();
             if (CanWrite)
                 StatusLine = r.Success ? $"Re-applied {SelectedMode} after resume" : $"Resume apply failed: {r.Error}";

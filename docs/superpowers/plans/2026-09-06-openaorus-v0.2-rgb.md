@@ -1811,6 +1811,22 @@ git commit -m "Persist lighting settings and restore them at startup"
 WPF's colour type is `System.Windows.Media.Color` and the hardware type is `RgbColor`;
 convert at this boundary and nowhere else.
 
+**Amendment (recorded after implementation).** The sketch below stages: only
+`ApplyEffectCommand` writes, and changing a parameter changes nothing on the keyboard until
+the button is pressed. What shipped previews instead — every parameter change writes at once,
+so the panel shows the lighting rather than describing it. That expansion is where almost all
+of this task's complexity comes from, and the plan never recorded it, so it is written down
+here rather than left to look like gold plating.
+
+Previewing forces a coalescing latch. `LightingController` serializes reports behind a
+semaphore and paces them 65 ms apart, so a slider bound straight to a write would queue one
+sequence per pixel of travel and spend seconds draining values the owner has already moved
+past — and driving reports faster than the pacing is what can wedge the keyboard's controller
+until it is replugged. Hence: one write in flight, one value waiting, a superseded value
+dropped unsent, `settings.json` written once at the end of a burst rather than once per step,
+and a `LiveWrites` task so a caller can wait for a live write it must not overtake. None of
+that is in the sketch, and none of it is optional once the panel previews.
+
 - [ ] **Step 1: Implement**
 
 `src/OpenAorus.App/ViewModels/LightingViewModel.cs`:

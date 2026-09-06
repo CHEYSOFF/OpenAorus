@@ -4,7 +4,15 @@ namespace OpenAorus.Hardware.Tests;
 
 public sealed class FakeKeyboardHid : IKeyboardHid
 {
-    public List<byte[]> Written { get; } = new();
+    private readonly List<byte[]> _written = new();
+
+    /// <summary>
+    /// Every report written so far, oldest first. A snapshot taken under the same lock the
+    /// writes take, so it is safe to read while a drain loop is still writing - enumerating
+    /// the live list mid-burst throws, and did once turn a real regression into a pass.
+    /// </summary>
+    public IReadOnlyList<byte[]> Written { get { lock (_written) return _written.ToArray(); } }
+
     public Queue<byte[]> Responses { get; } = new();
     public bool FailNextWrite { get; set; }
 
@@ -20,19 +28,25 @@ public sealed class FakeKeyboardHid : IKeyboardHid
     {
         if (report.Length != KeyboardHid.ReportLength)
             throw new ArgumentException($"Report must be {KeyboardHid.ReportLength} bytes.", nameof(report));
-        var index = Written.Count;
-        Written.Add((byte[])report.Clone());
-        // Consume FailNextWrite here too: setting both knobs must still fail exactly one write.
-        if (FailWriteAt == index) { FailNextWrite = false; return false; }
-        if (!FailNextWrite) return true;
-        FailNextWrite = false;
-        return false;
+        lock (_written)
+        {
+            var index = _written.Count;
+            _written.Add((byte[])report.Clone());
+            // Consume FailNextWrite here too: setting both knobs must still fail exactly one write.
+            if (FailWriteAt == index) { FailNextWrite = false; return false; }
+            if (!FailNextWrite) return true;
+            FailNextWrite = false;
+            return false;
+        }
     }
 
     public byte[]? GetFeature() => Responses.Count > 0 ? Responses.Dequeue() : null;
 
     public void Dispose() { }
 
+    /// <summary>Forgets the reports written so far, so a test can assert on what follows.</summary>
+    public void ClearWritten() { lock (_written) _written.Clear(); }
+
     /// <summary>The command byte of the Nth report written.</summary>
-    public byte Command(int index) => Written[index][1];
+    public byte Command(int index) { lock (_written) return _written[index][1]; }
 }

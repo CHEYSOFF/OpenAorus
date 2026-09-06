@@ -16,9 +16,11 @@ namespace OpenAorus.Hardware.Lighting;
 /// from the gap between an effect's offset and the next one in the table, which must
 /// exactly bound that effect's writes (write past it and you corrupt the next effect's
 /// stored settings). Two families need special care because of this:
-///   - Radar's gap is 6 bytes, matching Wave's [speed, random, direction, R, G, B]
-///     shape rather than the 5-byte "colour + speed + random" shape used by its
-///     neighbours in the mode table.
+///   - Radar's gap is 6 bytes. That rules out anything longer and leaves Wave's
+///     [speed, random, direction, R, G, B] as the only documented shape that fills it —
+///     the 5-byte "colour + speed + random" shape its neighbours in the mode table use
+///     would also fit, with a byte to spare, so the gap makes Wave's the better reading
+///     rather than the only possible one.
 ///   - Bloom and Merge have an 8-byte gap: [speed, random, R1, G1, B1, R2, G2, B2],
 ///     with no direction/reserved byte. Writing a 9th byte here (as Dragonstrike and
 ///     Crash's direction-bearing two-colour shape does) overflows into the next
@@ -130,7 +132,8 @@ public static class EffectPacket
     /// these parameters, and returns the result as a new array.
     /// </summary>
     /// <remarks>
-    /// All 18 effects share one block and each owns a private slice of it, so a write must
+    /// All 19 effects share one block, and the 18 that carry configuration each own a private
+    /// slice of it — Custom keeps its colours elsewhere and owns none — so a write must
     /// carry the other effects' stored configuration back untouched. Sending a freshly zeroed
     /// report would reset every effect the user is not currently looking at. Only the framing
     /// bytes 0..12 and this effect's own slice are written; everything else is copied through.

@@ -42,13 +42,13 @@ public class LightingViewModelTests : IDisposable
         public AppSettings Reload() => new SettingsStore(Services.Store.Path).Load();
     }
 
-    private Harness Build(Func<int, Task>? delay = null, bool keyboardPresent = true)
+    private Harness Build(Func<int, Task>? delay = null, bool keyboardPresent = true, string? settingsPath = null)
     {
         var hid = new FakeKeyboardHid { IsPresent = keyboardPresent };
         var wmi = new FakeGigabyteWmi();
         var profile = ModelProfile.Detect("AORUS 17G KD");
         // A directory of its own per harness: these tests really save, and really read back.
-        var path = Path.Combine(_dir, Guid.NewGuid().ToString("N"), "settings.json");
+        var path = settingsPath ?? Path.Combine(_dir, Guid.NewGuid().ToString("N"), "settings.json");
 
         return new Harness
         {
@@ -72,6 +72,19 @@ public class LightingViewModelTests : IDisposable
     }
 
     private static List<RgbColor> Slots(RgbColor c) => Enumerable.Repeat(c, KeyLayout.SlotCount).ToList();
+
+    /// <summary>
+    /// A settings path whose parent is a file, so the <c>Directory.CreateDirectory</c> inside
+    /// <see cref="SettingsStore.Save"/> throws. A read-only directory would need privileges the
+    /// test runner may not have; this needs none.
+    /// </summary>
+    private string UnwritableSettingsPath()
+    {
+        Directory.CreateDirectory(_dir);
+        var blocker = Path.Combine(_dir, Guid.NewGuid().ToString("N"));
+        File.WriteAllText(blocker, "a file where the settings directory would have to go");
+        return Path.Combine(blocker, "settings.json");
+    }
 
     // ---- Starting state -------------------------------------------------------------
 
@@ -160,8 +173,17 @@ public class LightingViewModelTests : IDisposable
     [Fact]
     public async Task A_slider_value_superseded_while_a_write_is_in_flight_never_reaches_the_keyboard()
     {
+        Harness? harness = null;
         var gate = new SemaphoreSlim(0);
-        var h = Build(delay: async _ => await gate.WaitAsync());
+        // Each sequence pauses once, between its status read and its write, so the pacing hook is
+        // where the burst can be inspected mid-flight: on the second call the first value has
+        // just landed on the keyboard with a newer one still waiting behind it.
+        var settingsFileAtEachPause = new List<bool>();
+        var h = harness = Build(delay: async _ =>
+        {
+            settingsFileAtEachPause.Add(File.Exists(harness!.Services.Store.Path));
+            await gate.WaitAsync();
+        });
         var vm = h.ViewModel();
 
         vm.BrightnessPercent = 10;              // starts a write, which parks on the pacing delay
@@ -172,6 +194,11 @@ public class LightingViewModelTests : IDisposable
 
         gate.Release(8);
         await vm.LiveWrites;
+
+        // Two pauses, one per sequence - and at neither of them had settings.json been written.
+        // A drag is one save, at the end, not one per value that reaches the keyboard: saving on
+        // every landed write would rewrite the file some twenty times across a three-second drag.
+        Assert.Equal(new[] { false, false }, settingsFileAtEachPause);
 
         // Two sequences, not four: the value in flight, then the newest. 20 and 30 were
         // superseded while they waited and were dropped without ever being sent.
@@ -199,6 +226,34 @@ public class LightingViewModelTests : IDisposable
         Assert.Equal("Failed", vm.StatusText);
         // Nothing landed, so nothing is persisted as if it had.
         Assert.False(File.Exists(h.Services.Store.Path));
+    }
+
+    /// <summary>
+    /// A save that cannot happen is the owner's problem, not a crash and not a silence. A plain
+    /// property change is fire-and-forget - nothing awaits the drain loop - so a throw from
+    /// <see cref="SettingsStore.Save"/> inside it would die in a task no one observes: keyboard
+    /// changed, nothing persisted, status line still saying it applied. The same throw out of
+    /// SavePreset escapes a synchronous command and reaches the dispatcher instead.
+    /// </summary>
+    [Fact]
+    public async Task A_settings_file_that_cannot_be_written_is_reported_and_leaves_the_panel_writing()
+    {
+        var h = Build(settingsPath: UnwritableSettingsPath());
+        var vm = h.ViewModel();
+
+        vm.BrightnessPercent = 25;
+        await vm.LiveWrites;   // must not throw, and must not swallow the failure either
+
+        var (kind, text) = Assert.Single(h.Banners);
+        Assert.Equal(BannerKind.Error, kind);
+        Assert.Contains("could not be saved", text, StringComparison.OrdinalIgnoreCase);
+
+        // And the latch recovered: the next change still reaches the keyboard.
+        var before = h.Hid.Written.Count;
+        vm.BrightnessPercent = 26;
+        await vm.LiveWrites;
+        Assert.True(h.Hid.Written.Count > before);
+        Assert.Equal(26, h.EffectReports[^1][12]);
     }
 
     /// <summary>
@@ -359,6 +414,81 @@ public class LightingViewModelTests : IDisposable
         Assert.Equal(KeyLayout.SlotCount, preset.PerKeyColors!.Count); // and the preset kept its own list
     }
 
+    /// <summary>
+    /// The same rule as for an effect write, on the path that takes longest to finish: a per-key
+    /// preset is four paced reports, so the window closing part-way through one is an ordinary
+    /// shape rather than a rare race. Without the catch the throw comes out of an
+    /// <c>AsyncRelayCommand</c>, which does not flow exceptions to the task scheduler by
+    /// default, so it surfaces as an unhandled UI-thread exception on the way out.
+    /// </summary>
+    [Fact]
+    public async Task Shutdown_abandons_a_per_key_preset_without_reporting_it()
+    {
+        var gate = new SemaphoreSlim(0);
+        var h = Build(delay: async _ => await gate.WaitAsync());
+        var preset = new LightingPreset
+        {
+            Name = "Painted",
+            BrightnessPercent = 40,
+            PerKeyColors = Slots(RgbColor.White),
+        };
+        h.Saved.Presets.Add(preset);
+        var vm = h.ViewModel();
+
+        var applying = vm.ApplyPresetCommand.ExecuteAsync(preset);
+        vm.Shutdown();     // the window is closing mid-sequence
+        gate.Release(8);
+        await applying;    // must not throw
+
+        Assert.Empty(h.Banners);
+        Assert.DoesNotContain(h.Hid.Written, r => r[1] == 0x02); // stopped before custom was selected
+        Assert.NotEqual("Failed", vm.StatusText);
+    }
+
+    /// <summary>
+    /// A click on a preset lands within a pacing delay of the slider the owner has just let go
+    /// of, which is an ordinary gesture. That slider's value is already waiting in the latch
+    /// when the command starts, and suppressing the property copies does nothing about it: the
+    /// per-key sequence runs outside the latch, so the stranded value's write queues on the
+    /// controller's gate behind it and lands last - panel saying Custom, keyboard back in the
+    /// superseded effect, settings agreeing with the keyboard, and no banner to explain it.
+    /// </summary>
+    [Fact]
+    public async Task A_per_key_preset_supersedes_a_value_still_waiting_in_the_latch()
+    {
+        var gate = new SemaphoreSlim(0);
+        var h = Build(delay: async _ => await gate.WaitAsync());
+        var preset = new LightingPreset
+        {
+            Name = "Painted",
+            Effect = LightEffect.Static,
+            BrightnessPercent = 61,
+            PerKeyColors = Slots(new RgbColor(0x0F, 0x1E, 0x2D)),
+        };
+        h.Saved.Presets.Add(preset);
+        var vm = h.ViewModel();
+
+        vm.SelectedEffect = LightEffect.Wave;  // starts a write, which parks on the pacing delay
+        vm.BrightnessPercent = 22;             // waits in the latch behind it
+        var applying = vm.ApplyPresetCommand.ExecuteAsync(preset);
+
+        gate.Release(32);
+        await applying;
+        await vm.LiveWrites;
+
+        // Custom is where the keyboard ends up, and the colours it ends up with are the preset's.
+        Assert.Equal(LightEffect.Custom, vm.SelectedEffect);
+        var last = h.EffectReports[^1];
+        Assert.Equal((byte)LightEffect.Custom, last[10]);
+        Assert.Equal(61, last[12]);
+        Assert.Equal(0x06, h.Hid.Command(h.Hid.Written.Count - 4)); // the colour pages ran last, not first
+
+        var reloaded = h.Reload().Lighting;
+        Assert.Equal(LightEffect.Custom, reloaded.Effect);
+        Assert.Equal(preset.PerKeyColors, reloaded.PerKeyColors);
+        Assert.Empty(h.Banners);
+    }
+
     [Fact]
     public void Saving_a_preset_adds_it_to_the_list_and_to_the_file()
     {
@@ -484,7 +614,7 @@ public class LightingViewModelTests : IDisposable
         var vm = h.ViewModel();
         vm.BrightnessPercent = 88;
         await vm.LiveWrites;
-        h.Hid.Written.Clear();
+        h.Hid.ClearWritten();
 
         await vm.PerKey.ApplyCommand.ExecuteAsync(null);
 

@@ -14,9 +14,10 @@ public sealed record LightingResult(bool Success, string? Error)
 /// Sequences lighting writes. Reports are serialized and paced <see cref="WriteDelayMs"/>
 /// apart, matching Gigabyte's own software: the keyboard silently drops reports sent faster.
 ///
-/// Selecting an effect is a read-modify-write, not a plain write. All 18 effects share one
-/// 264-byte block and each owns a slice of it, so writing a freshly zeroed report would
-/// reset every effect except the one being selected. The block is read back with command
+/// Selecting an effect is a read-modify-write, not a plain write. All 19 effects share one
+/// 264-byte block, and the 18 that carry configuration each own a slice of it (Custom keeps
+/// its colours elsewhere and owns none), so writing a freshly zeroed report would reset
+/// every effect except the one being selected. The block is read back with command
 /// 0x82 first and only the active effect's slice is patched. A read that fails or answers
 /// with the wrong length falls back to zeroes, which is no worse than not reading at all.
 /// </summary>

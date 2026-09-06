@@ -42,9 +42,23 @@ public partial class LightingViewModel : ObservableObject
     private readonly CancellationTokenSource _shutdown = new();
 
     private readonly object _latch = new();
-    private EffectParameters? _pending;
-    private bool _draining;
 
+    /// <summary>
+    /// The whole state of the latch, in one field. Null means no drain loop is running;
+    /// <see cref="Queued.Nothing"/> means one is running with nothing waiting for it; anything
+    /// else is the one value waiting to be written.
+    /// </summary>
+    /// <remarks>
+    /// One field rather than a value and a running flag, because taking the waiting value and
+    /// closing the latch behind it have to be a single write. Split into two, a queuer landing
+    /// between them parks a value with the latch already closed and no loop left to collect it:
+    /// the panel shows the new setting and the keyboard keeps the old one, permanently. The
+    /// window is tens of nanoseconds wide, so nothing observable from outside can be relied on
+    /// to catch a regression - the invariant is kept by there being nothing left to split.
+    /// </remarks>
+    private Queued? _queued;
+
+    private int _writers;
     private bool _suppressLiveWrite;
     private bool _lastWriteOk;
     private bool _syncingHex;
@@ -59,6 +73,8 @@ public partial class LightingViewModel : ObservableObject
     [ObservableProperty] private LightDirection _direction;
     [ObservableProperty] private bool _random;
     [ObservableProperty] private string _statusText = "";
+
+    /// <summary>Whether a write is in flight or waiting behind one; true for a whole burst.</summary>
     [ObservableProperty] private bool _isBusy;
 
     /// <summary>Whether a supported lighting collection was found. False hides the panel.</summary>
@@ -100,10 +116,19 @@ public partial class LightingViewModel : ObservableObject
     public IReadOnlyList<MediaColor> Swatches => ColorText.Swatches;
 
     /// <summary>
-    /// The coalesced write loop, or an already-completed task when nothing is queued. Awaited
-    /// by <see cref="ApplyEffectCommand"/>, and by the tests, which need a write started by a
-    /// property change to be observable.
+    /// The coalesced write loop, or an already-completed task when nothing is queued. Awaiting
+    /// it waits for every value latched so far to have been written or superseded, which is what
+    /// a caller has to do before anything that must not overtake a live write - applying an
+    /// effect, or a per-key sequence that runs outside the latch.
     /// </summary>
+    /// <remarks>
+    /// Meaningful to a single-threaded caller. The field is assigned outside the latch, so a
+    /// second thread queueing at the same moment could be handed the previous burst's task and
+    /// return while a drain is still running; queueing happens on the UI thread, and the
+    /// assignment stays outside the latch on purpose, since moving it in would run
+    /// <see cref="DrainAsync"/>'s synchronous prefix - the first take and the first write -
+    /// under the lock.
+    /// </remarks>
     public Task LiveWrites { get; private set; } = Task.CompletedTask;
 
     /// <param name="services">The app's services; only the lighting and settings halves are used.</param>
@@ -165,8 +190,8 @@ public partial class LightingViewModel : ObservableObject
         var perKey = preset.PerKeyColors is { Count: KeyLayout.SlotCount } ? preset.PerKeyColors : null;
 
         // Copied in with the live write suppressed: seven property changes would otherwise queue
-        // a write of a half-loaded preset, and for a per-key preset that write would race the
-        // colour reports below through the controller's gate.
+        // a write of a half-loaded preset. Suppression only stops new values being latched - a
+        // value latched before this command started is still there, and is dealt with below.
         _suppressLiveWrite = true;
         try
         {
@@ -182,7 +207,17 @@ public partial class LightingViewModel : ObservableObject
         }
         finally { _suppressLiveWrite = false; }
 
-        if (perKey is not null) await WritePerKeyAsync(perKey.ToList());
+        if (perKey is not null)
+        {
+            // A per-key sequence runs outside the latch, so a value still waiting there - the
+            // slider the owner let go of a moment before clicking - would queue on the
+            // controller's gate alongside it and land last, leaving the keyboard in the effect
+            // the panel has just stopped showing. It is superseded by this preset, so it is
+            // dropped, and only the write already in flight is waited out.
+            DropPending();
+            await LiveWrites;
+            await WritePerKeyAsync(perKey.ToList());
+        }
         else await ApplyEffectAsync();
 
         if (_lastWriteOk) StatusText = $"{preset.Name} applied";
@@ -297,28 +332,39 @@ public partial class LightingViewModel : ObservableObject
     {
         lock (_latch)
         {
-            _pending = parameters;
-            if (_draining) return; // the loop already running will pick this up when it comes round
-            _draining = true;
+            var draining = _queued is not null;
+            _queued = Queued.Waiting(parameters);
+            if (draining) return; // the loop already running will pick this up when it comes round
         }
 
+        BeginWrite();
         LiveWrites = DrainAsync();
     }
 
+    /// <summary>The value waiting to be written, or null when the loop has run out of work.</summary>
     private EffectParameters? TakeNext()
     {
         lock (_latch)
         {
-            var next = _pending;
-            _pending = null;
-            // Closing the latch in the same breath as seeing it empty: a QueueWrite landing
-            // between the two would otherwise park a value with no loop left to drain it.
-            if (next is null) _draining = false;
+            var next = _queued?.Pending;
+            // One assignment both takes the value and settles whether the loop goes on. There is
+            // no instant in between for a QueueWrite to land in, which is why the two facts share
+            // a field: see the remarks on _queued.
+            _queued = next is null ? null : Queued.Nothing;
             return next;
         }
     }
 
-    private bool HasPending { get { lock (_latch) return _pending is not null; } }
+    /// <summary>
+    /// Drops the value waiting in the latch without disturbing the loop that would have written
+    /// it, for a caller whose own write supersedes it outright.
+    /// </summary>
+    private void DropPending()
+    {
+        lock (_latch) { if (_queued is not null) _queued = Queued.Nothing; }
+    }
+
+    private bool HasPending { get { lock (_latch) return _queued?.Pending is not null; } }
 
     private async Task DrainAsync()
     {
@@ -329,19 +375,56 @@ public partial class LightingViewModel : ObservableObject
         }
         catch
         {
-            // A throw out of the loop - a settings file that cannot be written, say - must not
-            // leave the latch closed, or the panel looks alive and never writes again. Only on
-            // this path: the normal exit already opened it, inside TakeNext, and reopening it
-            // here could hand a drain that has since started a second one running beside it.
-            lock (_latch) { _draining = false; }
+            // A throw out of the loop must not leave the latch closed, or the panel looks alive
+            // and never writes again. Opening it discards whatever was waiting, because the two
+            // are one field - and that is the right half of the trade: a live loop is what the
+            // panel needs back, and the value it drops is one nothing is left to write. Only on
+            // this path; the normal exit already opened the latch, inside TakeNext, and doing it
+            // again here could hand a drain that has since started a second one beside it.
+            lock (_latch) { _queued = null; }
             throw;
         }
+        finally { EndWrite(); }
     }
 
+    /// <summary>
+    /// Marks a write in progress. <see cref="IsBusy"/> covers a whole burst - a value in flight
+    /// or waiting behind it - rather than one report at a time, so a continuous drag does not
+    /// blink the indicator between drain iterations, and a per-key sequence running alongside a
+    /// drain keeps it lit until both are done.
+    /// </summary>
+    private void BeginWrite()
+    {
+        Interlocked.Increment(ref _writers);
+        IsBusy = true;
+    }
+
+    /// <summary>Ends what <see cref="BeginWrite"/> began; the last one out clears the flag.</summary>
+    private void EndWrite()
+    {
+        if (Interlocked.Decrement(ref _writers) == 0) IsBusy = false;
+    }
+
+    /// <summary>What the latch holds while a drain loop is running: one waiting value, or none.</summary>
+    private sealed class Queued
+    {
+        /// <summary>A running loop with nothing waiting for it.</summary>
+        public static readonly Queued Nothing = new(null);
+
+        private Queued(EffectParameters? pending) => Pending = pending;
+
+        /// <summary>A running loop with <paramref name="parameters"/> waiting for it.</summary>
+        public static Queued Waiting(EffectParameters parameters) => new(parameters);
+
+        /// <summary>The value waiting to be written; null in <see cref="Nothing"/>.</summary>
+        public EffectParameters? Pending { get; }
+    }
+
+    // One iteration of the drain loop. The burst's IsBusy is the loop's to hold, not this
+    // method's: clearing it here would blink the indicator between iterations of a drag.
     private async Task WriteEffectAsync(EffectParameters parameters)
     {
         _lastWriteOk = false;
-        IsBusy = true;
         try
         {
             var result = await _s.Lighting.ApplyEffectAsync(parameters, _shutdown.Token);
@@ -360,13 +443,12 @@ public partial class LightingViewModel : ObservableObject
         {
             // Shutdown, not a failure: the owner asked for nothing and has nothing to be told.
         }
-        finally { IsBusy = false; }
     }
 
     private async Task WritePerKeyAsync(List<RgbColor> colors)
     {
         _lastWriteOk = false;
-        IsBusy = true;
+        BeginWrite();
         try
         {
             var result = await _s.Lighting.ApplyPerKeyAsync(colors, BrightnessPercent, _shutdown.Token);
@@ -388,8 +470,9 @@ public partial class LightingViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            // The window is closing under a four-report sequence. Same as above: nothing to say.
         }
-        finally { IsBusy = false; }
+        finally { EndWrite(); }
     }
 
     /// <summary>
@@ -397,10 +480,19 @@ public partial class LightingViewModel : ObservableObject
     /// would otherwise rewrite settings.json on every step, and every value but the last is one
     /// the owner has already moved past.
     /// </summary>
+    /// <remarks>
+    /// A save that cannot happen is bannered rather than thrown. Most of the callers here are
+    /// fire-and-forget - nothing awaits the drain loop a slider starts - so a throw would die
+    /// unobserved in that task, leaving the keyboard changed, the file not, and the status line
+    /// still saying it applied; from a command it would escape instead and reach the
+    /// dispatcher's unhandled handler. One failure cannot mean both.
+    /// </remarks>
     private void Remember(Action update)
     {
         update();
-        if (!HasPending) _s.Store.Save(_s.Settings);
+        if (HasPending) return;
+        try { _s.Store.Save(_s.Settings); }
+        catch (Exception ex) { _banner(BannerKind.Error, $"Lighting could not be saved: {ex.Message}"); }
     }
 
     // ---- Conversions ----------------------------------------------------------------

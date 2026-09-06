@@ -150,7 +150,7 @@ public class PerKeyEditorViewModelTests : IDisposable
         {
             editor.ClearCommand.Execute(null);
             editor.PaintCommand.Execute(key);
-            h.Hid.Written.Clear();
+            h.Hid.ClearWritten();
 
             await editor.ApplyCommand.ExecuteAsync(null);
 
