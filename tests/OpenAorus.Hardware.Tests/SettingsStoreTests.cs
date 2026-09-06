@@ -59,10 +59,40 @@ public class SettingsStoreTests : IDisposable
     {
         Directory.CreateDirectory(_dir);
         System.IO.File.WriteAllText(File, "{ not json");
-        var s = new SettingsStore(File).Load();
+        var store = new SettingsStore(File);
+        var s = store.Load();
         Assert.Equal(FanMode.Normal, s.Mode);
         Assert.True(System.IO.File.Exists(File + ".bad"));
         Assert.False(System.IO.File.Exists(File));
+        Assert.True(store.LastLoadWasReset);
+    }
+
+    [Fact]
+    public void Load_reports_no_reset_on_a_clean_load()
+    {
+        var store = new SettingsStore(File);
+        store.Load();
+        Assert.False(store.LastLoadWasReset);
+    }
+
+    [Fact]
+    public void Unreadable_file_resets_to_defaults_instead_of_throwing()
+    {
+        Directory.CreateDirectory(_dir);
+        System.IO.File.WriteAllText(File, "{}");
+        var store = new SettingsStore(File);
+        AppSettings? result = null;
+
+        // A locked file throws IOException on read, not JsonException - the fix broadens the catch to cover it.
+        using (new FileStream(File, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var ex = Record.Exception(() => result = store.Load());
+            Assert.Null(ex);
+        }
+
+        Assert.NotNull(result);
+        Assert.Equal(FanMode.Normal, result!.Mode);
+        Assert.True(store.LastLoadWasReset);
     }
 
     [Fact]

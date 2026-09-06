@@ -9,8 +9,14 @@ public sealed class FakeGccSystem : IGccSystem
     public HashSet<string> DisabledTasks { get; } = new();
     public Dictionary<string, string> RunValues { get; } = new() { ["AorusFusion"] = @"C:\Program Files\ControlCenter\FusionStartUp.exe" };
     public Dictionary<string, RegistryValueKind> RunValueKinds { get; } = new() { ["AorusFusion"] = RegistryValueKind.ExpandString };
-    public HashSet<string> Services { get; } = new() { "SMV4_Service" };
-    public HashSet<string> DisabledServices { get; } = new();
+
+    /// <summary>Services keyed by name -> current start mode. Absence of a key means the service does not exist.</summary>
+    public Dictionary<string, GccServiceStartMode> ServiceStartModes { get; } = new() { ["SMV4_Service"] = GccServiceStartMode.Automatic };
+    public HashSet<string> RunningServices { get; } = new() { "SMV4_Service" };
+
+    /// <summary>Names for which StopAndDisableService should report failure (the "sc config" call failed), without changing state.</summary>
+    public HashSet<string> DisableServiceShouldFail { get; } = new();
+
     public HashSet<string> Running { get; } = new() { "GCC", "FusionStation" };
     public List<string> Log { get; } = new();
 
@@ -22,9 +28,28 @@ public sealed class FakeGccSystem : IGccSystem
     public RegistryValueKind ReadRunValueKind(string name) => RunValueKinds.GetValueOrDefault(name, RegistryValueKind.String);
     public void DeleteRunValue(string name) { Log.Add($"delete-run {name}"); RunValues.Remove(name); RunValueKinds.Remove(name); }
     public void WriteRunValue(string name, string value, RegistryValueKind kind) { Log.Add($"write-run {name}"); RunValues[name] = value; RunValueKinds[name] = kind; }
-    public bool ServiceExists(string name) => Services.Contains(name);
-    public bool StopAndDisableService(string name) { Log.Add($"disable-service {name}"); return DisabledServices.Add(name); }
-    public bool EnableService(string name) { Log.Add($"enable-service {name}"); return DisabledServices.Remove(name); }
+
+    public bool ServiceExists(string name) => ServiceStartModes.ContainsKey(name);
+    public GccServiceStartMode GetServiceStartMode(string name) => ServiceStartModes.GetValueOrDefault(name, GccServiceStartMode.Disabled);
+    public bool IsServiceRunning(string name) => RunningServices.Contains(name);
+
+    public bool StopAndDisableService(string name)
+    {
+        Log.Add($"disable-service {name}");
+        if (DisableServiceShouldFail.Contains(name)) return false;
+        RunningServices.Remove(name);
+        ServiceStartModes[name] = GccServiceStartMode.Disabled;
+        return true;
+    }
+
+    public bool EnableService(string name, GccServiceStartMode originalMode, bool wasRunning)
+    {
+        Log.Add($"enable-service {name} {originalMode} running={wasRunning}");
+        ServiceStartModes[name] = originalMode;
+        if (wasRunning) RunningServices.Add(name);
+        return true;
+    }
+
     public int KillProcesses(IEnumerable<string> names) { var n = Running.RemoveWhere(names.Contains); Log.Add($"kill {n}"); return n; }
     public bool AnyProcessRunning(IEnumerable<string> names) => Running.Overlaps(names);
 }
@@ -40,9 +65,11 @@ public class GccTakeoverTests
         Assert.True(state.TaskDisabled);
         Assert.Equal(@"C:\Program Files\ControlCenter\FusionStartUp.exe", state.RunValue);
         Assert.True(state.ServiceDisabled);
+        Assert.Equal(GccServiceStartMode.Automatic, state.ServiceStartMode);
+        Assert.True(state.ServiceWasRunning);
         Assert.Contains("GCC", sys.DisabledTasks);
         Assert.DoesNotContain("AorusFusion", sys.RunValues.Keys);
-        Assert.Contains("SMV4_Service", sys.DisabledServices);
+        Assert.Equal(GccServiceStartMode.Disabled, sys.ServiceStartModes["SMV4_Service"]);
         Assert.Empty(sys.Running);
         Assert.False(GccTakeover.IsGccActive(sys));
     }
@@ -51,7 +78,7 @@ public class GccTakeoverTests
     public void TakeOver_records_only_what_existed()
     {
         var sys = new FakeGccSystem();
-        sys.Tasks.Clear(); sys.RunValues.Clear(); sys.Services.Clear();
+        sys.Tasks.Clear(); sys.RunValues.Clear(); sys.ServiceStartModes.Clear();
         var state = GccTakeover.TakeOver(sys);
         Assert.False(state.TaskDisabled);
         Assert.Null(state.RunValue);
@@ -70,8 +97,9 @@ public class GccTakeoverTests
 
         Assert.Empty(sys.DisabledTasks);
         Assert.Equal(@"C:\Program Files\ControlCenter\FusionStartUp.exe", sys.RunValues["AorusFusion"]);
-        Assert.Empty(sys.DisabledServices);
-        Assert.Equal(new[] { "enable-task GCC", "write-run AorusFusion", "enable-service SMV4_Service" }, sys.Log);
+        Assert.Equal(GccServiceStartMode.Automatic, sys.ServiceStartModes["SMV4_Service"]);
+        Assert.Contains("SMV4_Service", sys.RunningServices);
+        Assert.Equal(new[] { "enable-task GCC", "write-run AorusFusion", $"enable-service SMV4_Service {GccServiceStartMode.Automatic} running=True" }, sys.Log);
     }
 
     [Fact]
@@ -87,7 +115,7 @@ public class GccTakeoverTests
     {
         var sys = new FakeGccSystem();
         Assert.True(GccTakeover.IsGccActive(sys));
-        sys.DisabledTasks.Add("GCC"); sys.RunValues.Clear(); sys.DisabledServices.Add("SMV4_Service");
+        sys.DisabledTasks.Add("GCC"); sys.RunValues.Clear(); sys.ServiceStartModes["SMV4_Service"] = GccServiceStartMode.Disabled;
         Assert.True(GccTakeover.IsGccActive(sys));   // processes still running
         sys.Running.Clear();
         Assert.False(GccTakeover.IsGccActive(sys));
@@ -98,7 +126,7 @@ public class GccTakeoverTests
     {
         var sys = new FakeGccSystem();
         sys.DisabledTasks.Add("GCC");
-        sys.DisabledServices.Add("SMV4_Service");
+        sys.ServiceStartModes["SMV4_Service"] = GccServiceStartMode.Disabled;
         sys.RunValues.Clear(); // isolate this test to the task/service bookkeeping under review
 
         var state = GccTakeover.TakeOver(sys);
@@ -112,7 +140,7 @@ public class GccTakeoverTests
         // Restore must not touch what it didn't record as changed: the owner's own choice stays untouched.
         Assert.Empty(sys.Log);
         Assert.Contains("GCC", sys.DisabledTasks);
-        Assert.Contains("SMV4_Service", sys.DisabledServices);
+        Assert.Equal(GccServiceStartMode.Disabled, sys.ServiceStartModes["SMV4_Service"]);
     }
 
     [Fact]
@@ -137,5 +165,53 @@ public class GccTakeoverTests
         GccTakeover.Restore(sys, state);
 
         Assert.Equal(RegistryValueKind.String, sys.RunValueKinds["AorusFusion"]);
+    }
+
+    [Fact]
+    public void Restore_writes_back_a_manual_service_as_manual_not_automatic()
+    {
+        var sys = new FakeGccSystem();
+        sys.ServiceStartModes["SMV4_Service"] = GccServiceStartMode.Manual;
+        sys.RunningServices.Remove("SMV4_Service"); // Manual services are typically not running
+
+        var state = GccTakeover.TakeOver(sys);
+        Assert.Equal(GccServiceStartMode.Manual, state.ServiceStartMode);
+
+        GccTakeover.Restore(sys, state);
+        Assert.Equal(GccServiceStartMode.Manual, sys.ServiceStartModes["SMV4_Service"]);
+        Assert.DoesNotContain("SMV4_Service", sys.RunningServices);
+    }
+
+    [Fact]
+    public void Restore_does_not_start_a_service_that_was_enabled_but_already_stopped()
+    {
+        var sys = new FakeGccSystem();
+        sys.RunningServices.Remove("SMV4_Service"); // Automatic, but not currently running
+
+        var state = GccTakeover.TakeOver(sys);
+        Assert.True(state.ServiceDisabled);
+        Assert.False(state.ServiceWasRunning);
+
+        GccTakeover.Restore(sys, state);
+        Assert.Equal(GccServiceStartMode.Automatic, sys.ServiceStartModes["SMV4_Service"]);
+        Assert.DoesNotContain("SMV4_Service", sys.RunningServices);
+    }
+
+    [Fact]
+    public void TakeOver_does_not_record_service_disabled_when_sc_config_fails()
+    {
+        var sys = new FakeGccSystem();
+        sys.DisableServiceShouldFail.Add("SMV4_Service");
+
+        var state = GccTakeover.TakeOver(sys);
+
+        Assert.False(state.ServiceDisabled);
+        Assert.Null(state.ServiceStartMode);
+        Assert.Equal(GccServiceStartMode.Automatic, sys.ServiceStartModes["SMV4_Service"]); // untouched by the failed attempt
+        Assert.Contains("SMV4_Service", sys.RunningServices); // still running - stop was never applied by the fake in this path
+
+        sys.Log.Clear();
+        GccTakeover.Restore(sys, state);
+        Assert.DoesNotContain(sys.Log, l => l.StartsWith("enable-service"));
     }
 }

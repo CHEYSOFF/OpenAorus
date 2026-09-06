@@ -53,7 +53,7 @@ public sealed class FanController
             {
                 ct.ThrowIfCancellationRequested();
                 var s = steps[i];
-                var r = _wmi.Invoke(WmiClass.Set, s.Method, s.Args);
+                var r = await Task.Run(() => _wmi.Invoke(WmiClass.Set, s.Method, s.Args), ct).ConfigureAwait(false);
                 if (!r.Success)
                     return WmiResult.Fail($"Step {i + 1}/{steps.Count} {s.Method} failed: {r.Error}");
                 if (i < steps.Count - 1)

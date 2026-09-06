@@ -22,4 +22,20 @@ public class StartupTaskTests
         Assert.Equal("/Delete /TN \"OpenAorus\" /F", StartupTask.BuildDeleteArguments());
         Assert.Equal("/Query /TN \"OpenAorus\"", StartupTask.BuildQueryArguments());
     }
+
+    [Fact]
+    public void Enable_refuses_a_dotnet_host_path()
+    {
+        // `dotnet run` makes Environment.ProcessPath the .NET host, not the app; registering a logon task
+        // against it would "succeed" and never actually bring the tray icon back.
+        Assert.False(StartupTask.Enable(@"C:\Program Files\dotnet\dotnet.exe"));
+    }
+
+    [Fact]
+    public void IsPublishedExe_accepts_only_the_openaorus_exe_filename()
+    {
+        Assert.True(StartupTask.IsPublishedExe(@"C:\Tools\OpenAorus.exe"));
+        Assert.True(StartupTask.IsPublishedExe(@"C:\Tools\openaorus.exe")); // case-insensitive
+        Assert.False(StartupTask.IsPublishedExe(@"C:\Program Files\dotnet\dotnet.exe"));
+    }
 }

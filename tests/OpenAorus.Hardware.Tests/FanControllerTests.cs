@@ -166,7 +166,12 @@ public class FanControllerTests
         var ctl = new FanController(wmi, Kd, async _ => await gate.WaitAsync());
         var first = ctl.ApplyAsync(FanMode.Normal);
         var second = ctl.ApplyAsync(FanMode.Quiet);
-        Assert.Single(wmi.Calls);           // first sequence blocked in its delay, second waiting
+
+        // The first step's WMI call now runs via Task.Run, so it may land on the pool a beat after this
+        // method starts both sequences; poll briefly rather than asserting on it synchronously.
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (wmi.Calls.Count == 0 && DateTime.UtcNow < deadline) await Task.Delay(5);
+        Assert.Single(wmi.Calls);           // first sequence blocked in its delay, second waiting on the gate
         for (var i = 0; i < 8; i++) gate.Release();
         await first; await second;
         Assert.Equal("SetNvThermalTarget", wmi.Calls[^1].Method);

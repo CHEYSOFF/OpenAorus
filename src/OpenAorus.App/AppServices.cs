@@ -44,13 +44,20 @@ public sealed class AppServices
         };
     }
 
-    /// <summary>Re-applies the persisted fan mode and charge limit (startup, resume, --apply).</summary>
+    /// <summary>Re-applies the persisted fan mode and charge limit (startup, resume, --apply). Attempts both even
+    /// if one fails, so a fan-write failure never strands the saved charge limit unrestored.</summary>
     public async Task<WmiResult> ApplySavedAsync()
     {
         if (!Profile.CanWrite) return WmiResult.Fail("read-only model");
+
         var fans = await Fans.ApplyAsync(Settings.Mode, Settings.FixedPercent, Settings.ToCurve());
-        if (!fans.Success) return fans;
-        return Battery.SetLimit(Settings.ChargeLimitEnabled, Settings.ChargeStopPercent);
+        var battery = Battery.SetLimit(Settings.ChargeLimitEnabled, Settings.ChargeStopPercent);
+        if (fans.Success && battery.Success) return WmiResult.Ok();
+
+        var errors = new List<string>();
+        if (!fans.Success) errors.Add($"fan mode: {fans.Error}");
+        if (!battery.Success) errors.Add($"charge limit: {battery.Error}");
+        return WmiResult.Fail(string.Join("; ", errors));
     }
 
     public string WriteDiagnostics()

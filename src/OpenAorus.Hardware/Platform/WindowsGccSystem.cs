@@ -8,8 +8,11 @@ public sealed class WindowsGccSystem : IGccSystem
 {
     private const string RunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
 
-    /// <summary>Runs a child process with a bounded wait. Never throws: a start failure, a timeout (the child
-    /// is then killed) or any other error all come back as a failed (-1) result rather than escaping the seam.</summary>
+    /// <summary>Runs a child process and reads its output. Never throws: a start failure, a timeout (the child
+    /// is then killed) or any other error all come back as a failed (-1) result rather than escaping the seam.
+    /// The 15s bound only applies to <c>WaitForExit</c>, which runs after stdout/stderr are read to completion -
+    /// a child that fills a pipe without exiting would block in the read, before the timeout is ever consulted.
+    /// schtasks/sc output is far too small for that to happen, and both callers run off the UI thread.</summary>
     private static (int code, string output) Run(string file, string args)
     {
         try
@@ -46,11 +49,7 @@ public sealed class WindowsGccSystem : IGccSystem
         return code == 0 && !output.Contains("<Enabled>false</Enabled>", StringComparison.OrdinalIgnoreCase);
     }
 
-    public bool DisableTask(string name)
-    {
-        var wasEnabled = IsTaskEnabled(name);
-        return Run("schtasks", $"/Change /TN \"{name}\" /Disable").code == 0 && wasEnabled;
-    }
+    public bool DisableTask(string name) => Run("schtasks", $"/Change /TN \"{name}\" /Disable").code == 0;
 
     public bool EnableTask(string name) => Run("schtasks", $"/Change /TN \"{name}\" /Enable").code == 0;
 
@@ -84,27 +83,72 @@ public sealed class WindowsGccSystem : IGccSystem
     public bool ServiceExists(string name) =>
         ServiceController.GetServices().Any(s => s.ServiceName.Equals(name, StringComparison.OrdinalIgnoreCase));
 
+    public GccServiceStartMode GetServiceStartMode(string name)
+    {
+        try
+        {
+            using var sc = new ServiceController(name);
+            return sc.StartType switch
+            {
+                ServiceStartMode.Boot => GccServiceStartMode.Boot,
+                ServiceStartMode.System => GccServiceStartMode.System,
+                ServiceStartMode.Automatic => IsDelayedAutoStart(name) ? GccServiceStartMode.AutomaticDelayed : GccServiceStartMode.Automatic,
+                ServiceStartMode.Manual => GccServiceStartMode.Manual,
+                _ => GccServiceStartMode.Disabled,
+            };
+        }
+        catch (Exception) { return GccServiceStartMode.Disabled; }
+    }
+
+    /// <summary>.NET's <see cref="ServiceController.StartType"/> cannot distinguish "Automatic" from "Automatic
+    /// (Delayed Start)" - that flag only appears as the DelayedAutostart value under the service's registry key.</summary>
+    private static bool IsDelayedAutoStart(string name)
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{name}", writable: false);
+            return key?.GetValue("DelayedAutostart") is int i && i != 0;
+        }
+        catch (Exception) { return false; }
+    }
+
+    public bool IsServiceRunning(string name)
+    {
+        try
+        {
+            using var sc = new ServiceController(name);
+            return sc.Status != ServiceControllerStatus.Stopped;
+        }
+        catch (Exception) { return false; }
+    }
+
     public bool StopAndDisableService(string name)
     {
         try
         {
             using var sc = new ServiceController(name);
-            var wasEnabled = sc.StartType != ServiceStartMode.Disabled;
             if (sc.Status != ServiceControllerStatus.Stopped)
             {
                 sc.Stop();
                 sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
             }
-            Run("sc", $"config \"{name}\" start= disabled");
-            return wasEnabled;
+            return Run("sc", $"config \"{name}\" start= disabled").code == 0;
         }
         catch (Exception) { return false; }
     }
 
-    public bool EnableService(string name)
+    public bool EnableService(string name, GccServiceStartMode originalMode, bool wasRunning)
     {
-        var ok = Run("sc", $"config \"{name}\" start= auto").code == 0;
-        Run("sc", $"start \"{name}\"");
+        var startArg = originalMode switch
+        {
+            GccServiceStartMode.Manual => "demand",
+            GccServiceStartMode.AutomaticDelayed => "delayed-auto",
+            GccServiceStartMode.Boot => "boot",
+            GccServiceStartMode.System => "system",
+            _ => "auto",
+        };
+        var ok = Run("sc", $"config \"{name}\" start= {startArg}").code == 0;
+        if (wasRunning) Run("sc", $"start \"{name}\"");
         return ok;
     }
 

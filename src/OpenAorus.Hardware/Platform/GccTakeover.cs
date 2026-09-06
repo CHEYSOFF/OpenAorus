@@ -10,6 +10,14 @@ public sealed class GccTakeoverState
     /// <summary>Registry kind the run value had before it was removed. Null in state produced by an older settings file; Restore then defaults to String.</summary>
     public RegistryValueKind? RunValueKind { get; set; }
     public bool ServiceDisabled { get; set; }
+
+    /// <summary>The service's start mode before takeover disabled it, so Restore can write back Manual, Automatic-Delayed,
+    /// etc. exactly instead of forcing Automatic. Null in state produced by an older settings file; Restore then defaults to Automatic.</summary>
+    public GccServiceStartMode? ServiceStartMode { get; set; }
+
+    /// <summary>Whether the service was actually running before takeover stopped it, so Restore only starts it back up
+    /// if it was running - a service that was merely enabled-but-stopped should stay stopped.</summary>
+    public bool ServiceWasRunning { get; set; }
     public DateTime When { get; set; } = DateTime.Now;
 }
 
@@ -29,7 +37,7 @@ public static class GccTakeover
     public static GccTakeoverState TakeOver(IGccSystem sys)
     {
         var state = new GccTakeoverState();
-        if (sys.TaskExists(TaskName))
+        if (sys.TaskExists(TaskName) && sys.IsTaskEnabled(TaskName))
             state.TaskDisabled = sys.DisableTask(TaskName);
 
         var run = sys.ReadRunValue(RunValueName);
@@ -41,7 +49,19 @@ public static class GccTakeover
         }
 
         if (sys.ServiceExists(ServiceName))
-            state.ServiceDisabled = sys.StopAndDisableService(ServiceName);
+        {
+            var mode = sys.GetServiceStartMode(ServiceName);
+            if (mode != GccServiceStartMode.Disabled)
+            {
+                var wasRunning = sys.IsServiceRunning(ServiceName);
+                if (sys.StopAndDisableService(ServiceName))
+                {
+                    state.ServiceDisabled = true;
+                    state.ServiceStartMode = mode;
+                    state.ServiceWasRunning = wasRunning;
+                }
+            }
+        }
 
         sys.KillProcesses(ProcessNames);
         return state;
@@ -51,7 +71,7 @@ public static class GccTakeover
     {
         if (state.TaskDisabled) sys.EnableTask(TaskName);
         if (state.RunValue is not null) sys.WriteRunValue(RunValueName, state.RunValue, state.RunValueKind ?? RegistryValueKind.String);
-        if (state.ServiceDisabled) sys.EnableService(ServiceName);
+        if (state.ServiceDisabled) sys.EnableService(ServiceName, state.ServiceStartMode ?? GccServiceStartMode.Automatic, state.ServiceWasRunning);
     }
 
     public static bool IsGccActive(IGccSystem sys) =>

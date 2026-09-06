@@ -61,6 +61,16 @@ Launch the app: `dotnet run --project src/OpenAorus.App -- --show`
 
 ## 4. Battery, autostart and taking over from Gigabyte Control Center
 
+Publish the app first and run the published executable for this section, rather than
+`dotnet run`: `dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+src/OpenAorus.App`, then run the `OpenAorus.exe` it produces. **Start with Windows** registers a
+logon task pointed at the current process's executable path; under `dotnet run` that path is
+`dotnet.exe`, not the app, so the task registers and reports itself as enabled (the first
+assertion below would pass) but the tray icon never comes back after logon, because dotnet.exe
+with no arguments does nothing (the second assertion would then fail, for a reason that has
+nothing to do with the app itself). OpenAorus refuses to create the task at all when the exe
+path does not end in `OpenAorus.exe`, precisely to stop this from happening quietly.
+
 - [ ] Tick **Limit charge**, set 80 %. `--dump` shows `GetChargePolicy: Data=4` and
       `GetChargeStop: Data=80`
 - [ ] Untick it: `Data=0` and `Data=100`

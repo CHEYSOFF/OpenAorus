@@ -42,6 +42,11 @@ public partial class MainViewModel : ObservableObject
 
         _bannerState = new BannerState(_s.Profile);
         SyncBanner();
+
+        if (_s.Store.LastLoadWasReset)
+            SetBanner(BannerKind.Warning,
+                "Settings could not be read and were reset to defaults; the previous file was kept as settings.json.bad. " +
+                "If 'Take over from Gigabyte Control Center' was on, its record is gone - re-check it in Settings.");
     }
 
     public async Task InitializeAsync()

@@ -39,6 +39,13 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task ToggleStartupAsync()
     {
+        var enabling = !StartWithWindows;
+        if (enabling && !StartupTask.IsPublishedExe(_s.ExePath))
+        {
+            Message = "Start with Windows needs the published OpenAorus.exe - it will not work when launched via `dotnet run`, which starts dotnet.exe instead.";
+            return;
+        }
+
         var ok = await Task.Run(() => StartWithWindows ? StartupTask.Disable() : StartupTask.Enable(_s.ExePath));
         if (!ok) { Message = "schtasks failed - are you elevated?"; return; }
         StartWithWindows = !StartWithWindows;

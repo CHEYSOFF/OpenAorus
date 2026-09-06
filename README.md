@@ -87,8 +87,21 @@ with the file and your exact model name — that's how more profiles get added.
 ## Safety
 
 OpenAorus only calls the same `GB_WMIACPI` methods Gigabyte Control Center
-calls, never writes fan duty above the model's maximum, and the custom curve
-runs inside the embedded controller, so closing the app does not stop the fans.
+calls, and clamps every duty it writes to the model's maximum before sending
+it. On the tested AORUS 17G KD that maximum is known to be correct; on an
+untested model it is a guess, and the yellow "untested model" banner exists
+because of that guess, not in spite of it - a wrong maximum could under- or
+over-drive the fans (see [`VERIFY.md`](VERIFY.md)).
+
+Fixed and Custom duty are written into the embedded controller and stay in
+force there after OpenAorus exits - closing the app does not stop the fans in
+either mode, which cuts both ways: nothing crashes if the tray icon dies, but
+a low Fixed duty you set for a quiet moment keeps governing the fans under a
+later heavy load with no running app to show it. Select **Normal** to hand
+control back to the controller's own thermal management before closing the
+app if that matters to you. Whether the controller genuinely keeps running a
+Custom curve with the app closed is itself one of the unverified assumptions
+in [`VERIFY.md`](VERIFY.md), not yet a confirmed guarantee.
 
 ## Docs
 
