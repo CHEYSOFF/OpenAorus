@@ -87,15 +87,77 @@ path does not end in `OpenAorus.exe`, precisely to stop this from happening quie
       still be in that mode; Gigabyte's watcher used to override it
 - [ ] Toggle takeover off and confirm all three items are restored
 
-## 5. Sleep and resume
+## 5. Keyboard lighting
+
+The switch above the content reads **Cooling | Lighting**. If there is no Lighting button,
+the app did not find a supported keyboard collection and nothing below applies.
+
+- [ ] The line under the switch reads `Keyboard connected · ENG-US slot order` or
+      `ENG-UK`. Note which; step 5.3 is what decides whether it is right
+- [ ] Walk the effect list. Each one visibly matches its name, and the controls that
+      appear change with it: Wave offers a direction, Merge offers a second colour,
+      Flow offers neither colour box
+- [ ] Move **Brightness** with an effect other than Static selected. The keyboard dims
+      and brightens without the effect restarting or changing
+
+### 5.1 Colours and presets
+
+- [ ] Pick a swatch, then type a hex value. Both change the keyboard, and a half-typed
+      value like `#AB` changes nothing until it is complete
+- [ ] Apply **Off**, **Warm White** and **Aorus Orange** in turn; each looks like its name
+- [ ] Set up something you like, press **Save current as preset**, switch to another
+      effect, then press the new preset. It comes back exactly
+- [ ] Press **×** on your own preset: it goes. Press **×** on **Off**: the status line
+      says it is built in and it stays
+
+### 5.2 Per-key colours
+
+- [ ] Select the **Custom** effect. The keyboard picture appears
+- [ ] **Fill** paints every key, **Apply** sends it. The whole keyboard lights, including
+      the keys the picture does not draw - nothing should be left dark that is not
+- [ ] **Clear** then **Apply**: the keyboard goes dark
+- [ ] Paint a handful of keys different colours, press **Apply**, then **Read**. The
+      picture comes back showing the colours the keyboard is holding
+- [ ] Drag across a row with the mouse held down: every key crossed takes the brush colour
+
+### 5.3 The slot order - the one that decides US versus UK
+
+This is the check the whole per-key feature rests on. The 128-slot order was recovered
+from Gigabyte's software and has never been measured against hardware.
+
+- [ ] **Clear**, paint only **A**, press **Apply**. The status line says
+      `Painted A · slot 10`. Exactly one key lights, and it is **A**
+- [ ] Repeat for **Enter**, **Space**, **Num-5**, **`[`** and **`]`**. Painting `[` must
+      light `[`, not `]` - the two are 16 slots apart in the report and are the pair most
+      likely to expose a wrong map
+- [ ] If a key lights that is not the one you painted, note which key you painted and
+      which one lit, then set `"LayoutOverride": "EngUs"` (or `"EngUk"`) in
+      `%LocalAppData%\OpenAorus\settings.json`, restart, and try the same key again
+- [ ] If neither order gets it right, the recovered map is wrong for this model. The two
+      key names and the slot number from the status line are exactly what is needed to
+      fix it
+
+### 5.4 It comes back
+
+- [ ] With a per-key painting applied, reboot. The same colours return
+- [ ] Select a plain effect, sleep the laptop, wake it. The same effect returns
+
+## 6. Sleep and resume
 
 - [ ] Sleep the laptop, wake it, and confirm the status line reads
       `Re-applied <mode> after resume`
 
 ## Assumptions this checklist is really testing
 
-Three things were reconstructed from Gigabyte's software and could not be checked
+Four things were reconstructed from Gigabyte's software and could not be checked
 without the laptop. If any of them is wrong, the symptom shows up above.
+
+- **The 128-slot key order.** Both the ENG-US and ENG-UK maps were recovered from
+  Gigabyte's binaries and neither has been measured. The slots are an electrical scan
+  matrix, so a wrong map looks entirely plausible until a key lights that is not the one
+  you painted. Step 5.3 is the only thing that settles it. The picture of the keyboard is
+  a separate table joined to the slots by key name, so a wrong map moves colours, never
+  the picture.
 
 - **The curve terminator.** A custom curve with fewer than 15 points is followed by a
   `(0, 0)` point, on the assumption that the controller reads its table until it meets

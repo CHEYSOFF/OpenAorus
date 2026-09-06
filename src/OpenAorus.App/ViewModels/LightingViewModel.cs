@@ -47,10 +47,13 @@ public partial class LightingViewModel : ObservableObject
 
     private bool _suppressLiveWrite;
     private bool _lastWriteOk;
+    private bool _syncingHex;
 
     [ObservableProperty] private LightEffect _selectedEffect;
     [ObservableProperty] private MediaColor _pickedColor;
     [ObservableProperty] private MediaColor _pickedSecondColor;
+    [ObservableProperty] private string _colorHex = "";
+    [ObservableProperty] private string _secondColorHex = "";
     [ObservableProperty] private int _speedPercent;
     [ObservableProperty] private int _brightnessPercent;
     [ObservableProperty] private LightDirection _direction;
@@ -90,6 +93,12 @@ public partial class LightingViewModel : ObservableObject
     /// <summary>The three shipped seeds followed by the owner's own presets.</summary>
     public ObservableCollection<LightingPreset> Presets { get; }
 
+    /// <summary>The custom-colour editor, shown when the selected effect is <see cref="LightEffect.Custom"/>.</summary>
+    public PerKeyEditorViewModel PerKey { get; }
+
+    /// <summary>The colours the two pickers offer without typing hex.</summary>
+    public IReadOnlyList<MediaColor> Swatches => ColorText.Swatches;
+
     /// <summary>
     /// The coalesced write loop, or an already-completed task when nothing is queued. Awaited
     /// by <see cref="ApplyEffectCommand"/>, and by the tests, which need a write started by a
@@ -112,6 +121,13 @@ public partial class LightingViewModel : ObservableObject
         _brightnessPercent = saved.BrightnessPercent;
         _direction = saved.Direction;
         _random = saved.Random;
+        _colorHex = ColorText.Format(_pickedColor);
+        _secondColorHex = ColorText.Format(_pickedSecondColor);
+
+        // The editor writes at the panel's live brightness rather than the saved one: the two
+        // only agree once a write has landed, and the slider is what the owner is looking at.
+        // It shares the shutdown token, so closing the window abandons its sequence too.
+        PerKey = new PerKeyEditorViewModel(services, banner, () => BrightnessPercent, _shutdown.Token);
 
         // Read straight from BuiltInPresets and never cached: it returns fresh instances on
         // every access exactly so the panel can bind them to editable fields, and holding them
@@ -230,8 +246,41 @@ public partial class LightingViewModel : ObservableObject
         RequestLiveWrite();
     }
 
-    partial void OnPickedColorChanged(MediaColor value) => RequestLiveWrite();
-    partial void OnPickedSecondColorChanged(MediaColor value) => RequestLiveWrite();
+    partial void OnPickedColorChanged(MediaColor value)
+    {
+        Sync(() => ColorHex = ColorText.Format(value));
+        RequestLiveWrite();
+    }
+
+    partial void OnPickedSecondColorChanged(MediaColor value)
+    {
+        Sync(() => SecondColorHex = ColorText.Format(value));
+        RequestLiveWrite();
+    }
+
+    // The hex boxes and the swatch pickers are two views of one colour, so each writes the other.
+    // A value that does not parse is ignored rather than corrected: the owner is mid-edit, and
+    // there is nothing to send until they have typed a whole colour.
+    partial void OnColorHexChanged(string value)
+    {
+        if (_syncingHex || !ColorText.TryParse(value, out var color)) return;
+        Sync(() => PickedColor = color);
+    }
+
+    partial void OnSecondColorHexChanged(string value)
+    {
+        if (_syncingHex || !ColorText.TryParse(value, out var color)) return;
+        Sync(() => PickedSecondColor = color);
+    }
+
+    /// <summary>Runs one half of a colour/hex sync with the other half's echo suppressed.</summary>
+    private void Sync(Action update)
+    {
+        var wasSyncing = _syncingHex;
+        _syncingHex = true;
+        try { update(); }
+        finally { _syncingHex = wasSyncing; }
+    }
     partial void OnSpeedPercentChanged(int value) => RequestLiveWrite();
     partial void OnBrightnessPercentChanged(int value) => RequestLiveWrite();
     partial void OnDirectionChanged(LightDirection value) => RequestLiveWrite();

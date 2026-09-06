@@ -47,6 +47,41 @@ public sealed class EnumEqualsVisibilityConverter : IValueConverter
     public object ConvertBack(object v, Type t, object p, CultureInfo c) => System.Windows.Data.Binding.DoNothing;
 }
 
+/// <summary>
+/// The outline of a key in the per-key editor: accent for the key painted last, the card border
+/// for the rest. A converter rather than a DataTrigger so the two states are the only two there
+/// are, whatever the binding hands over.
+/// </summary>
+public sealed class SelectionBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type t, object parameter, CultureInfo c) =>
+        value is true
+            ? System.Windows.Application.Current.FindResource("Accent")
+            : System.Windows.Application.Current.FindResource("CardBorder");
+    public object ConvertBack(object v, Type t, object p, CultureInfo c) => System.Windows.Data.Binding.DoNothing;
+}
+
+/// <summary>
+/// Key captions in the per-key editor sit on top of the colour the key will light, so the text
+/// has to invert with it rather than being one fixed colour that vanishes half the time.
+/// </summary>
+public sealed class ReadableForegroundConverter : IValueConverter
+{
+    private static readonly SolidColorBrush OnDark = Frozen(0xE6, 0xE8, 0xEC);
+    private static readonly SolidColorBrush OnLight = Frozen(0x15, 0x17, 0x1B);
+
+    public object Convert(object value, Type t, object parameter, CultureInfo c) =>
+        value is System.Windows.Media.Color color && !ColorText.IsDark(color) ? OnLight : OnDark;
+    public object ConvertBack(object v, Type t, object p, CultureInfo c) => System.Windows.Data.Binding.DoNothing;
+
+    private static SolidColorBrush Frozen(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+}
+
 public static class FanModes
 {
     public static readonly Hardware.Fans.FanMode Quiet = Hardware.Fans.FanMode.Quiet;

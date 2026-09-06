@@ -1,0 +1,85 @@
+<UserControl x:Class="OpenAorus.App.Views.KeyboardCanvas"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="clr-namespace:OpenAorus.App">
+    <UserControl.Resources>
+        <app:SelectionBrushConverter x:Key="SelBrush"/>
+        <app:ReadableForegroundConverter x:Key="KeyFg"/>
+        <DataTemplate x:Key="SwatchTemplate">
+            <Border Width="46" Height="12" CornerRadius="2" BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
+                <Border.Background><SolidColorBrush Color="{Binding}"/></Border.Background>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <!-- A drag paints every key it crosses, so the release has to be caught wherever it lands:
+         on a key, on the gap between two, or on the way out of the picture entirely. -->
+    <StackPanel PreviewMouseLeftButtonUp="Paint_Up" MouseLeave="Paint_Left">
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock DockPanel.Dock="Left" Width="42" VerticalAlignment="Center" Text="Brush"/>
+            <ComboBox DockPanel.Dock="Left" Width="64" ItemsSource="{Binding Swatches}"
+                      SelectedItem="{Binding BrushColor}" ItemTemplate="{StaticResource SwatchTemplate}"
+                      ToolTip="Pick the colour to paint with"/>
+            <TextBox DockPanel.Dock="Left" Width="76" Margin="6,0,0,0" Text="{Binding BrushHex}"
+                     ToolTip="Or type it as #RRGGBB"/>
+            <Border DockPanel.Dock="Left" Width="22" Margin="6,0,0,0" CornerRadius="3"
+                    BorderThickness="1" BorderBrush="{StaticResource CardBorder}">
+                <Border.Background><SolidColorBrush Color="{Binding BrushColor}"/></Border.Background>
+            </Border>
+            <TextBlock/>
+        </DockPanel>
+
+        <!-- Scaled to fit rather than scrolled: a numpad the owner has to scroll sideways to reach
+             is the one part of the keyboard they would most easily believe is not there. Down only,
+             so on a wider window the keys stay their natural size instead of being blown up. -->
+        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,0,0,6">
+            <ItemsControl ItemsSource="{Binding Blocks}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <ItemsControl ItemsSource="{Binding Rows}" Margin="{Binding Indent}" VerticalAlignment="Top">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ItemsControl ItemsSource="{Binding Keys}" Margin="{Binding Indent}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="{Binding Width}" Height="16" Margin="1" CornerRadius="2"
+                                                        BorderThickness="1" Cursor="Hand"
+                                                        BorderBrush="{Binding IsSelected, Converter={StaticResource SelBrush}}"
+                                                        ToolTip="{Binding Tooltip}"
+                                                        MouseLeftButtonDown="Key_Down" MouseEnter="Key_Enter">
+                                                    <Border.Background><SolidColorBrush Color="{Binding Color}"/></Border.Background>
+                                                    <TextBlock Text="{Binding Caption}" FontSize="8"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Foreground="{Binding Color, Converter={StaticResource KeyFg}}"/>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Viewbox>
+
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Apply" Margin="6,0,0,0" Command="{Binding ApplyCommand}"/>
+            <Button DockPanel.Dock="Right" Content="Read" Margin="6,0,0,0" Command="{Binding ReadFromKeyboardCommand}"
+                    ToolTip="Load the colours the keyboard is holding now"/>
+            <Button DockPanel.Dock="Right" Content="Clear" Margin="6,0,0,0" Command="{Binding ClearCommand}"/>
+            <Button DockPanel.Dock="Right" Content="Fill" Command="{Binding FillAllCommand}"/>
+            <TextBlock Style="{StaticResource Muted}" VerticalAlignment="Center" Text="{Binding StatusText}"
+                       TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
+
+        <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
+                   Text="The slot order is recovered, not measured. Paint one key, press Apply, and check that the key that lights is the one you painted. If it is not, set &quot;LayoutOverride&quot; to &quot;EngUs&quot; or &quot;EngUk&quot; in settings.json and restart."/>
+    </StackPanel>
+</UserControl>

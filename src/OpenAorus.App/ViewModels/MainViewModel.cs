@@ -21,8 +21,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusLine = "";
     [ObservableProperty] private bool _isWindowVisible;
+    [ObservableProperty] private AppSection _selectedSection;
 
     public bool CanWrite => _s.Profile.CanWrite;
+
+    /// <summary>Whether the Lighting half of the window exists. False hides its button entirely.</summary>
+    public bool LightingAvailable => Lighting.KeyboardPresent;
     public string ModelLine => $"{_s.Profile.Name} · {_s.Profile.Status} · v{_s.Version}";
     public IReadOnlyList<FanMode> Modes { get; } = Enum.GetValues<FanMode>();
     public CurveEditorViewModel Curve { get; }
@@ -93,6 +97,20 @@ public partial class MainViewModel : ObservableObject
         // A lighting sequence is paced 65 ms per report and there is no window left to show its
         // result on, so it is dropped rather than held on to on the way out.
         Lighting.Shutdown();
+    }
+
+    /// <summary>Switches the window between Cooling and Lighting.</summary>
+    [RelayCommand]
+    private void SelectSection(AppSection section) => SelectedSection = section;
+
+    /// <summary>
+    /// Refuses a section that is not there. With no keyboard the Lighting button is not drawn, so
+    /// this only fires on a stale binding or a later caller - and leaving the window showing an
+    /// empty panel with no way back would be the worse of the two outcomes.
+    /// </summary>
+    partial void OnSelectedSectionChanged(AppSection value)
+    {
+        if (value == AppSection.Lighting && !LightingAvailable) SelectedSection = AppSection.Cooling;
     }
 
     partial void OnIsWindowVisibleChanged(bool value) =>

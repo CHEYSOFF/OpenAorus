@@ -421,4 +421,94 @@ public class LightingViewModelTests : IDisposable
         Assert.Contains(builtIn, vm.Presets);
         Assert.False(string.IsNullOrWhiteSpace(vm.StatusText));
     }
+
+    // ---- The colour boxes -----------------------------------------------------------
+
+    [Fact]
+    public void The_hex_boxes_and_the_picked_colours_follow_each_other()
+    {
+        var vm = Build().ViewModel();
+
+        vm.PickedColor = MediaColor.FromRgb(0x12, 0x34, 0x56);
+        vm.PickedSecondColor = MediaColor.FromRgb(0x65, 0x43, 0x21);
+
+        Assert.Equal("#123456", vm.ColorHex);
+        Assert.Equal("#654321", vm.SecondColorHex);
+
+        vm.ColorHex = "abcdef";
+        Assert.Equal(MediaColor.FromRgb(0xAB, 0xCD, 0xEF), vm.PickedColor);
+    }
+
+    /// <summary>
+    /// The hex box is bound live, so it sees "#A", "#AB", "#ABC" on the way to a whole colour.
+    /// Each of those reaching the keyboard would be a write of something the owner never chose.
+    /// </summary>
+    [Fact]
+    public async Task A_half_typed_hex_value_writes_nothing()
+    {
+        var h = Build();
+        var vm = h.ViewModel();
+        vm.PickedColor = MediaColor.FromRgb(0x12, 0x34, 0x56);
+        await vm.LiveWrites;
+        var before = h.Hid.Written.Count;
+
+        vm.ColorHex = "#AB";
+        await vm.LiveWrites;
+
+        Assert.Equal(MediaColor.FromRgb(0x12, 0x34, 0x56), vm.PickedColor);
+        Assert.Equal(before, h.Hid.Written.Count);
+    }
+
+    // ---- The per-key editor ---------------------------------------------------------
+
+    [Fact]
+    public void The_panel_owns_a_per_key_editor_over_the_same_layout()
+    {
+        var h = Build();
+
+        var vm = h.ViewModel();
+
+        Assert.Equal(
+            h.Services.Lighting.Layout.RealKeys.Select(k => k.Slot),
+            vm.PerKey.Keys.Select(k => k.Slot).OrderBy(s => s));
+    }
+
+    /// <summary>
+    /// A per-key write carries brightness with it, and the panel's slider is the live value -
+    /// the settings only catch up once a write has landed.
+    /// </summary>
+    [Fact]
+    public async Task The_editor_writes_at_the_panel_s_current_brightness()
+    {
+        var h = Build();
+        var vm = h.ViewModel();
+        vm.BrightnessPercent = 88;
+        await vm.LiveWrites;
+        h.Hid.Written.Clear();
+
+        await vm.PerKey.ApplyCommand.ExecuteAsync(null);
+
+        Assert.Equal(88, h.Hid.Written[^1][12]);
+        Assert.Equal((byte)LightEffect.Custom, h.Hid.Written[^1][10]);
+    }
+
+    /// <summary>
+    /// Shutdown reaches the editor too: a per-key sequence is four paced reports, and there is
+    /// no more window to show its result on than there is for an effect write.
+    /// </summary>
+    [Fact]
+    public async Task Shutdown_abandons_a_per_key_write_without_reporting_it()
+    {
+        var gate = new SemaphoreSlim(0);
+        var h = Build(delay: async _ => await gate.WaitAsync());
+        var vm = h.ViewModel();
+
+        var applying = vm.PerKey.ApplyCommand.ExecuteAsync(null);
+        vm.Shutdown();
+        gate.Release(8);
+        await applying;  // must not throw
+
+        Assert.Empty(h.Banners);
+        Assert.DoesNotContain(h.Hid.Written, r => r[1] == 0x02); // stopped before custom was selected
+    }
 }
