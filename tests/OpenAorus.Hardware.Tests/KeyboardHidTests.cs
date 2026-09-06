@@ -38,4 +38,11 @@ public class KeyboardHidTests
         Assert.False(hid.SetFeature(new byte[264]));
         Assert.True(hid.SetFeature(new byte[264]));
     }
+
+    [Fact]
+    public void Fake_rejects_a_wrong_length_buffer_like_the_real_implementation()
+    {
+        var hid = new FakeKeyboardHid();
+        Assert.Throws<ArgumentException>(() => hid.SetFeature(new byte[263]));
+    }
 }

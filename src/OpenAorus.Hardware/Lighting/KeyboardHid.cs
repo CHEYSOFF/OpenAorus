@@ -22,7 +22,7 @@ public sealed class KeyboardHid : IKeyboardHid
 
     private readonly SafeFileHandle? _handle;
 
-    public bool IsPresent => _handle is { IsInvalid: false };
+    public bool IsPresent => _handle is { IsInvalid: false, IsClosed: false };
     public KeyboardIdentity? Identity { get; }
 
     private KeyboardHid(SafeFileHandle? handle, KeyboardIdentity? identity)
@@ -68,14 +68,14 @@ public sealed class KeyboardHid : IKeyboardHid
 
     public bool SetFeature(byte[] report)
     {
-        if (_handle is null || _handle.IsInvalid) return false;
         if (report.Length != ReportLength) throw new ArgumentException($"Report must be {ReportLength} bytes.", nameof(report));
+        if (_handle is null || _handle.IsInvalid || _handle.IsClosed) return false;
         return HidD_SetFeature(_handle, report, (uint)report.Length);
     }
 
     public byte[]? GetFeature()
     {
-        if (_handle is null || _handle.IsInvalid) return null;
+        if (_handle is null || _handle.IsInvalid || _handle.IsClosed) return null;
         var buffer = new byte[ReportLength];
         buffer[0] = ReportId;
         return HidD_GetFeature(_handle, buffer, (uint)buffer.Length) ? buffer : null;

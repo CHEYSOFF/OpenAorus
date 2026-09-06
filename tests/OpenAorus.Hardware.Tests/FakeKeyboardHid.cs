@@ -13,6 +13,8 @@ public sealed class FakeKeyboardHid : IKeyboardHid
 
     public bool SetFeature(byte[] report)
     {
+        if (report.Length != KeyboardHid.ReportLength)
+            throw new ArgumentException($"Report must be {KeyboardHid.ReportLength} bytes.", nameof(report));
         Written.Add((byte[])report.Clone());
         if (!FailNextWrite) return true;
         FailNextWrite = false;
