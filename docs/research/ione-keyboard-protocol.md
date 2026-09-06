@@ -66,6 +66,22 @@ Configuration buffers, by shape:
 - Wave: `[speed, random, direction, R, G, B]`
 - Custom: no configuration bytes; the colours are written separately (below)
 
+**Radar (`09`) is the one effect no source names a shape for.** The list above is
+complete for every other mode; Radar is absent from it because nothing recovered says
+what its configuration bytes are. What is known is that its slice is six bytes wide
+(offset 37, with Star Shining at 43) and that it accepts a direction. OpenAorus therefore
+sends it in Wave's shape, `[speed, random, direction, R, G, B]`, which is the only
+documented six-byte shape and fills the slice exactly. That is an inference from the
+offset table, not a fact from the sources, and it is the first thing to change if Radar
+alone misbehaves on hardware.
+
+The parenthesised direction byte in the two-colour shape is not uniform either, and the
+same offset table is what settles it: Dragonstrike (59) and Crash (86) have nine bytes
+before the next offset, which fits the direction byte, while Bloom (68) and Merge (78)
+have eight, which does not. OpenAorus writes the direction for the first pair and omits
+it for the second. Writing nine bytes for Bloom or Merge overflows into the next effect's
+stored settings, which is invisible until that neighbour is selected.
+
 Speed is inverted before sending: `wire = 10 - round(ui_speed / 10)` for a 0..100 UI value.
 Direction encodings differ per mode; GCC swaps 2 and 3 for Flow. Each mode's direction
 set must be checked against hardware.
@@ -95,6 +111,13 @@ keys). The two layouts differ only in a few slots.
 ## What is still unknown
 
 - Whether the 17G KD really uses the ENG-UK slot order (GCC's `isUK` flag says yes).
+- Which slot order `7A3F` uses. It appears in the sibling-PID list and nowhere else;
+  OpenAorus falls back to ENG-US for it on no evidence at all.
+- Radar's configuration shape, inferred from its six-byte slice rather than documented;
+  see the note under the shapes above.
+- What the second configuration byte of Breathing and Ripple selects. Because it is
+  unidentified, OpenAorus never writes it and carries whatever the keyboard holds
+  through a read-modify-write untouched.
 - Exact direction encodings per mode.
 - Whether the light bar / logo LED on this chassis is a separate zone (the WMI side has
   `SetLightBar`, unused in v0.1).

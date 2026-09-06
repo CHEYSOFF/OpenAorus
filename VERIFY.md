@@ -1,10 +1,14 @@
 # Hardware verification checklist
 
-Everything in OpenAorus that touches the embedded controller was written against the
-protocol decompiled from Gigabyte Control Center and is covered by unit tests, but
-**no fan, sensor or battery behaviour has been confirmed on real hardware yet**. The
-build environment cannot elevate, and every one of these steps needs administrator
-rights on the laptop itself.
+Everything in OpenAorus that touches the embedded controller or the keyboard was written
+against protocols decompiled from Gigabyte Control Center and is covered by unit tests,
+but **no fan, sensor, battery or lighting behaviour has been confirmed on real hardware
+yet**. The build environment cannot elevate and has no keyboard of the supported family
+attached.
+
+Every step below needs administrator rights on the laptop itself, except section 5: the
+keyboard is a plain HID device and its protocol needs none. The app relaunches itself
+elevated at startup regardless, for the fan side, so the UAC prompt appears either way.
 
 Work through this list on an AORUS 17G KD (or any Gigabyte laptop) and record what you
 see. Anything that disagrees with the expected result is a bug, not a surprise.
@@ -136,11 +140,67 @@ from Gigabyte's software and has never been measured against hardware.
 - [ ] If neither order gets it right, the recovered map is wrong for this model. The two
       key names and the slot number from the status line are exactly what is needed to
       fix it
+- [ ] Record which product id this keyboard is, from Device Manager: the `Fusion RGB KB`
+      device, Details, Hardware Ids. `7A3D` is treated as the ENG-UK order and `7A3C` as
+      ENG-US because Gigabyte's own software says so. `7A3F` also gets ENG-US, but purely
+      as a fallback: nothing is known about that model's slot order, and ENG-US was picked
+      so lighting works at all. On a `7A3F` keyboard this step is not confirming a reading,
+      it is the first evidence anyone has, so report the result whichever way it comes out
 
 ### 5.4 It comes back
 
 - [ ] With a per-key painting applied, reboot. The same colours return
 - [ ] Select a plain effect, sleep the laptop, wake it. The same effect returns
+
+### 5.5 One effect's settings survive configuring another
+
+All 18 configurable effects keep their settings in slices of a single 264-byte block, and
+the slices are adjacent. An effect that writes one byte too many silently overwrites the
+*first* byte of the next effect's stored settings, and nothing shows until you switch to
+that neighbour. Two such overflows were found by arithmetic against the offset table:
+Bloom and Merge were sending the nine-byte two-colour shape into an eight-byte slice.
+Separately, selecting an effect now reads the whole block back first and patches only that
+effect's slice, instead of sending a zeroed report that would reset every effect the owner
+is not currently looking at.
+
+Neither correction can be tested anywhere but here. The unit tests pin the bytes the app
+emits; only the keyboard knows what it stored. **This section is the only hardware
+evidence either of those two fixes will ever get.**
+
+- [ ] Set **Bloom** to a distinctive pair of colours. Switch to **Spiral** and set its
+      speed and direction. Switch back to Bloom: its colours, speed and random flag must be
+      exactly as you left them. Then switch to Spiral once more: it must be as you left it
+      too. Bloom coming back at defaults means the read-back is failing; Spiral's speed or
+      direction changing on its own means Bloom is still writing a byte past its slice
+- [ ] The same for **Merge** and **Crash**, in both directions. Merge's slice runs into
+      Crash's, so a Merge overflow shows up as Crash's speed changing by itself
+- [ ] Configure **Wave**, then **Cross**, then **Dragonstrike**, then return to Wave.
+      Wave's speed, direction and colour must all be unchanged, and so must Cross's when
+      you pass back through it
+- [ ] If *every* other effect comes back at defaults after a single switch, this is the
+      read-modify-write failing wholesale rather than one slice overflowing: the block read
+      is being refused and the app is falling back to a zeroed buffer
+- [ ] Anything else that comes back altered names its own culprit. Note which effect you
+      configured and which one changed afterwards; that pair identifies the payload length
+      to shorten in `EffectPacket`
+
+### 5.6 The bytes nobody could identify
+
+- [ ] **Radar.** The recovered protocol notes give the configuration shape of every effect
+      except this one. It is sent as speed, random, direction, then colour, inferred from
+      the six bytes its slice has room for and from the capability table saying it takes a
+      direction. Check that Radar animates, that its colour and speed take effect and that
+      its direction control reverses something. Then switch to **Star Shining**, which owns
+      the slice immediately after Radar's, and confirm its settings survived. If Radar
+      misbehaves while everything around it is fine, its payload shape is the thing to
+      change, and nothing short of this will say so
+- [ ] **Breathing and Ripple.** The second byte of their slice is an unidentified mode
+      selector, not the random flag that every neighbouring shape carries in that position.
+      The app therefore never writes it: on a read-modify-write it carries through whatever
+      the firmware or Gigabyte's software last stored there. Confirm both effects animate
+      normally and that their colour and speed take effect. One of them stuck in a
+      behaviour the UI cannot change is that byte holding a value from before OpenAorus
+      ever touched the keyboard
 
 ## 6. Sleep and resume
 
@@ -149,8 +209,9 @@ from Gigabyte's software and has never been measured against hardware.
 
 ## Assumptions this checklist is really testing
 
-Four things were reconstructed from Gigabyte's software and could not be checked
-without the laptop. If any of them is wrong, the symptom shows up above.
+Everything below was reconstructed from Gigabyte's software, or inferred from the shape
+of the data, and could not be checked without the laptop. If any of it is wrong, the
+symptom shows up above.
 
 - **The 128-slot key order.** Both the ENG-US and ENG-UK maps were recovered from
   Gigabyte's binaries and neither has been measured. The slots are an electrical scan
@@ -158,6 +219,29 @@ without the laptop. If any of them is wrong, the symptom shows up above.
   you painted. Step 5.3 is the only thing that settles it. The picture of the keyboard is
   a separate table joined to the slots by key name, so a wrong map moves colours, never
   the picture.
+
+- **Which slot order a `7A3F` keyboard uses.** `7A3D` is mapped to ENG-UK and `7A3C` to
+  ENG-US on the strength of a flag in Gigabyte's software. `7A3F` is supported but never
+  appears in anything that was recovered, so it falls back to ENG-US on no evidence
+  whatsoever. Step 5.3 on such a keyboard produces the first fact anyone has about it.
+
+- **Where each effect's slice ends.** The offset table gives where each effect's
+  configuration starts; the length of each is taken to be the gap to the next one, which
+  is what makes the shape of a payload checkable at all. Bloom and Merge were writing one
+  byte past that gap and were shortened on that reasoning alone. Section 5.5 is the only
+  thing that can confirm the arithmetic matched the firmware.
+
+- **Radar's payload shape.** Every other effect's configuration shape is named in the
+  recovered notes. Radar's is not, so it is sent as speed, random, direction and colour,
+  which is the shape that fits its six-byte slice given that it accepts a direction. If
+  Radar is the one effect that misbehaves, this is why, and section 5.6 says what to
+  record.
+
+- **The second configuration byte of Breathing and Ripple.** The notes call it a mode
+  selector and do not say what its values mean, so the app leaves it exactly as the
+  keyboard had it rather than writing a zero over something the firmware may be using.
+  That is the safer half of the bet, not a known-correct choice; section 5.6 is where an
+  effect stuck in an unexplained mode would show up.
 
 - **The curve terminator.** A custom curve with fewer than 15 points is followed by a
   `(0, 0)` point, on the assumption that the controller reads its table until it meets
