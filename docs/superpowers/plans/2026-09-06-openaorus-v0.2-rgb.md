@@ -20,7 +20,7 @@
 - Lighting needs **no elevation**. Never add an elevation requirement to this path.
 - Accept `VID 0x1044` or `0x0414`, `PID` in `{0x7A3C, 0x7A3D, 0x7A3F}`, and select the collection by `UsagePage 0xFF01` + `Usage 0x0001` + `FeatureReportByteLength == 264` — never by parsing the device path.
 - Speed on the wire is inverted: `wire = 10 - round(ui / 10)` for a 0–100 UI value.
-- Commit messages must not contain a `Co-Authored-By` trailer or name any AI tool.
+- Commit messages describe the change and nothing else: no attribution trailers of any kind.
 - Run tests with `dotnet test OpenAorus.sln`; build with `dotnet build OpenAorus.sln -c Release`.
 - Steps marked `OWNER VERIFY` need the physical laptop. Never claim lighting behaviour is confirmed without it; collect them into `VERIFY.md`.
 
