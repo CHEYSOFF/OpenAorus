@@ -124,4 +124,59 @@ public class BannerStateTests
         Assert.Equal(BannerKind.None, b.Kind);
         Assert.Equal("", b.Text);
     }
+
+    [Fact]
+    public void Override_notice_reaches_an_unknown_model_despite_its_permanent_error()
+    {
+        var b = new BannerState(Unknown());
+        var errorText = b.Text;
+
+        b.ReportOverrideNotice(BannerKind.Warning, "settings were reset");
+
+        Assert.Equal(BannerKind.Warning, b.Kind);
+        Assert.Equal("settings were reset", b.Text);
+        Assert.NotEqual(errorText, b.Text);
+    }
+
+    [Fact]
+    public void Override_notice_reaches_an_untested_model()
+    {
+        var b = new BannerState(Untested());
+
+        b.ReportOverrideNotice(BannerKind.Warning, "settings were reset");
+
+        Assert.Equal(BannerKind.Warning, b.Kind);
+        Assert.Equal("settings were reset", b.Text);
+    }
+
+    [Fact]
+    public void Untested_model_returns_to_its_baseline_warning_once_the_override_notice_is_gone()
+    {
+        var baseline = new BannerState(Untested());
+        var warningText = baseline.Text;
+
+        // Cleared via a reported success.
+        var clearedBySuccess = new BannerState(Untested());
+        clearedBySuccess.ReportOverrideNotice(BannerKind.Warning, "settings were reset");
+        clearedBySuccess.ReportSuccess();
+        Assert.Equal(BannerKind.Warning, clearedBySuccess.Kind);
+        Assert.Equal(warningText, clearedBySuccess.Text);
+
+        // Superseded by a later explicit notice, then that notice itself is cleared.
+        var supersededThenCleared = new BannerState(Untested());
+        supersededThenCleared.ReportOverrideNotice(BannerKind.Warning, "settings were reset");
+        supersededThenCleared.ReportFailure("apply failed");
+        Assert.Equal(BannerKind.Error, supersededThenCleared.Kind);
+        Assert.Equal("apply failed", supersededThenCleared.Text);
+        supersededThenCleared.ReportSuccess();
+        Assert.Equal(BannerKind.Warning, supersededThenCleared.Kind);
+        Assert.Equal(warningText, supersededThenCleared.Text);
+
+        // Superseded by a successful sensor read.
+        var clearedBySensor = new BannerState(Untested());
+        clearedBySensor.ReportOverrideNotice(BannerKind.Warning, "settings were reset");
+        clearedBySensor.ReportSensorResult(ok: true, error: null);
+        Assert.Equal(BannerKind.Warning, clearedBySensor.Kind);
+        Assert.Equal(warningText, clearedBySensor.Text);
+    }
 }

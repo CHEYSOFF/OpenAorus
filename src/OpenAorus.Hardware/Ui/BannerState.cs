@@ -17,7 +17,18 @@ public enum BannerKind { None, Info, Warning, Error }
 ///   failure or message. Persists until superseded by another explicit report or by
 ///   <see cref="ReportSuccess"/>; a successful sensor read never clears it.
 ///
-/// An <see cref="ProfileStatus.Unknown"/> model's banner is permanent: no method here ever changes it.
+/// An <see cref="ProfileStatus.Unknown"/> model's banner is permanent: no method here ever changes it -
+/// except <see cref="ReportOverrideNotice"/>, described below.
+///
+/// On top of all three sits an optional override notice: a message that must reach the owner regardless
+/// of model status (e.g. "your settings were reset"). It is set by <see cref="ReportOverrideNotice"/>,
+/// which is the one method that ignores the unknown-model guard, and it visually replaces whatever
+/// Kind/Text would otherwise report without touching the baseline/sensor/explicit state underneath. The
+/// next call to <see cref="ReportSensorResult"/>, <see cref="ReportFailure"/>, <see cref="ReportNotice"/>
+/// or <see cref="ReportSuccess"/> on a non-unknown model clears the override and reveals whatever that
+/// underlying state is - e.g. an untested model's baseline warning, not an empty banner. On an unknown
+/// model those methods still no-op entirely, so an override notice raised there is as permanent as the
+/// baseline error it sits on top of.
 /// </summary>
 public sealed class BannerState
 {
@@ -28,8 +39,15 @@ public sealed class BannerState
     private readonly string _baselineText;
     private Source _source = Source.Baseline;
 
-    public BannerKind Kind { get; private set; }
-    public string Text { get; private set; }
+    private BannerKind _normalKind;
+    private string _normalText;
+
+    private bool _overrideActive;
+    private BannerKind _overrideKind;
+    private string _overrideText = "";
+
+    public BannerKind Kind => _overrideActive ? _overrideKind : _normalKind;
+    public string Text => _overrideActive ? _overrideText : _normalText;
 
     public BannerState(ModelProfile profile)
     {
@@ -42,21 +60,35 @@ public sealed class BannerState
                 "Untested model - compare fan duty read-back with Gigabyte Control Center before trusting it."),
             _ => (BannerKind.None, ""),
         };
-        Kind = _baselineKind;
-        Text = _baselineText;
+        _normalKind = _baselineKind;
+        _normalText = _baselineText;
+    }
+
+    /// <summary>
+    /// Report a one-off notice that must reach the owner on every model, including an
+    /// <see cref="ProfileStatus.Unknown"/> model whose banner is otherwise permanent. Layers over whatever
+    /// the banner is currently tracking without disturbing it - see the class remarks for how and when it
+    /// is revealed again.
+    /// </summary>
+    public void ReportOverrideNotice(BannerKind kind, string text)
+    {
+        _overrideActive = true;
+        _overrideKind = kind;
+        _overrideText = text;
     }
 
     /// <summary>Report the outcome of a sensor poll. Only clears a banner this same method previously raised.</summary>
     public void ReportSensorResult(bool ok, string? error)
     {
         if (_status == ProfileStatus.Unknown) return;
+        _overrideActive = false;
 
         if (!ok)
         {
-            if (_source == Source.Baseline && Kind == BannerKind.None)
+            if (_source == Source.Baseline && _normalKind == BannerKind.None)
             {
-                Kind = BannerKind.Error;
-                Text = error ?? "sensor read failed";
+                _normalKind = BannerKind.Error;
+                _normalText = error ?? "sensor read failed";
                 _source = Source.Sensor;
             }
             // Otherwise something is already showing (a baseline warning, an explicit failure/notice, or
@@ -80,9 +112,10 @@ public sealed class BannerState
     public void ReportNotice(BannerKind kind, string text)
     {
         if (_status == ProfileStatus.Unknown) return;
+        _overrideActive = false;
 
-        Kind = kind;
-        Text = text;
+        _normalKind = kind;
+        _normalText = text;
         _source = Source.Explicit;
     }
 
@@ -93,6 +126,7 @@ public sealed class BannerState
     public void ReportSuccess()
     {
         if (_status == ProfileStatus.Unknown) return;
+        _overrideActive = false;
         if (_source != Source.Explicit) return;
 
         _source = Source.Baseline;
@@ -101,7 +135,7 @@ public sealed class BannerState
 
     private void RevertToBaseline()
     {
-        Kind = _baselineKind;
-        Text = _baselineText;
+        _normalKind = _baselineKind;
+        _normalText = _baselineText;
     }
 }

@@ -44,9 +44,14 @@ public partial class MainViewModel : ObservableObject
         SyncBanner();
 
         if (_s.Store.LastLoadWasReset)
-            SetBanner(BannerKind.Warning,
+        {
+            // Routed through ReportOverrideNotice (not SetBanner) so this reaches the owner on every
+            // model, including an unrecognised one whose banner is otherwise permanent - see BannerState.
+            _bannerState.ReportOverrideNotice(BannerKind.Warning,
                 "Settings could not be read and were reset to defaults; the previous file was kept as settings.json.bad. " +
                 "If 'Take over from Gigabyte Control Center' was on, its record is gone - re-check it in Settings.");
+            SyncBanner();
+        }
     }
 
     public async Task InitializeAsync()
