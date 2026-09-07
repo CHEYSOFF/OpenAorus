@@ -25,12 +25,27 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private SensorSnapshot _sensors = SensorSnapshot.Empty;
     [ObservableProperty] private string _bannerText = "";
     [ObservableProperty] private BannerKind _banner = BannerKind.None;
-    [ObservableProperty] private bool _isBusy;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeMode))]
+    private bool _isBusy;
+
     [ObservableProperty] private string _statusLine = "";
     [ObservableProperty] private bool _isWindowVisible;
     [ObservableProperty] private AppSection _selectedSection;
 
     public bool CanWrite => _s.Profile.CanWrite;
+
+    /// <summary>Whether a mode press would be acted on right now.</summary>
+    /// <remarks>
+    /// Exactly the two conditions <see cref="ApplyModeAsync"/> drops a press on, so the mode strip
+    /// can say so instead of looking pressable and doing nothing. The second of them is the one
+    /// that moves: a mode change is five to seven writes paced at
+    /// <see cref="FanController.StepDelayMs"/>, and for those two to three seconds the row is
+    /// genuinely not taking presses. Dimming it for exactly that long is what tells the owner the
+    /// app is working rather than stuck - the chip they pressed has already moved, and it settles
+    /// from dim to solid when the controller agrees.
+    /// </remarks>
+    public bool CanChangeMode => CanWrite && !IsBusy;
 
     /// <summary>Whether the Lighting half of the window exists. False hides its button entirely.</summary>
     public bool LightingAvailable => Lighting.KeyboardPresent;
@@ -420,6 +435,20 @@ public partial class MainViewModel : ObservableObject
     /// not wait out five to seven paced writes for the right to do it. A re-entrant mode change
     /// from inside it is dropped by the same latch, like any other press mid-apply.
     /// </para>
+    /// <para>
+    /// THE SELECTION MOVES AT THAT SAME MOMENT, not when the sequence finishes. Five to seven
+    /// writes paced at <see cref="FanController.StepDelayMs"/> is two to three seconds, and a
+    /// custom curve with many points is longer; leaving the old mode lit for all of it made the
+    /// window look frozen rather than busy. So the press is acknowledged when it is accepted, the
+    /// row dims for as long as the writes take - see <see cref="CanChangeMode"/> - and a refused
+    /// write puts the selection back where it was, because a window claiming a mode the machine
+    /// is not in would be a worse lie than the frozen one this replaced.
+    /// </para>
+    /// <para>
+    /// <c>settings.Mode</c> is deliberately not moved early with it. The window may run ahead of
+    /// the machine; the file may not, because it is what goes back on at the next start and at the
+    /// next resume, and that has to be a mode the controller actually took.
+    /// </para>
     /// </remarks>
     /// <param name="mode">The mode to apply.</param>
     /// <param name="onAccepted">Run once the change is going to be attempted; null for callers
@@ -429,13 +458,16 @@ public partial class MainViewModel : ObservableObject
     {
         if (!CanWrite || IsBusy) return false;
         IsBusy = true;
+
+        var previous = SelectedMode;
+        SelectedMode = mode;
+        StatusLine = $"Applying {mode}…";
         onAccepted?.Invoke();
         try
         {
             var r = await _s.Fans.ApplyAsync(mode, FixedPercent, _s.Settings.ToCurve());
             if (r.Success)
             {
-                SelectedMode = mode;
                 _s.Settings.Mode = mode;
                 _s.Store.Save(_s.Settings);
                 StatusLine = $"{mode} applied";
@@ -444,6 +476,7 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
+                SelectedMode = previous;
                 StatusLine = $"{mode} failed";
                 _bannerState.ReportFailure(r.Error!);
                 SyncBanner();

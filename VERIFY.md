@@ -55,8 +55,17 @@ Launch the app: `dotnet run --project src/OpenAorus.App -- --show`
       exclamation mark, and back again when the error clears
 - [ ] Temperatures and RPM update about once a second
 - [ ] The status line reads `Applied Normal at startup`
+- [ ] Click **Gaming** and watch the window, not the fans. The Gaming chip lights up on the
+      press itself; the mode row dims and stops taking clicks for the two to three seconds
+      the writes take; the status line reads `Applying Gaming…` and then `Gaming applied`,
+      and the row comes back solid. What must not happen is the old mode staying lit with
+      nothing moving - that is the window looking broken rather than busy
 - [ ] **Gaming** makes the fans audibly ramp within a couple of seconds and the duty
       reading rises
+- [ ] Provoke a refused write - run the app unelevated on a machine whose WMI writes need
+      elevation - and click a mode. The chip moves on the press and then goes **back** to
+      the mode you were on, with `<mode> failed` in the status line and the error in the
+      banner. The window must never be left claiming a mode the machine is not in
 - [ ] **Quiet** brings them back down
 - [ ] **Turbo** pins both fans at 100 %
 - [ ] The tray right-click menu switches modes as well

@@ -89,8 +89,15 @@
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Style="{StaticResource GroupLabel}" Text="Fan mode"/>
                         <!-- The negative right margin cancels the trailing gap on the last chip, so
-                             the row ends flush with the cards below it. -->
-                        <UniformGrid Grid.Row="1" Columns="6" Margin="0,0,-4,12" IsEnabled="{Binding CanWrite}">
+                             the row ends flush with the cards below it.
+
+                             CanChangeMode, not CanWrite: it is that and "no sequence already
+                             running". A mode change is five to seven writes paced at 500 ms, and
+                             a press made during one is dropped, so for those two to three seconds
+                             the row says so - it dims, with the chip the owner just pressed
+                             already moved and lit, and settles back to solid when the controller
+                             agrees. The footer's status line names the mode being applied. -->
+                        <UniformGrid Grid.Row="1" Columns="6" Margin="0,0,-4,12" IsEnabled="{Binding CanChangeMode}">
                             <Button Style="{StaticResource ModeButton}" Content="Quiet"
                                     Tag="{Binding SelectedMode, Converter={StaticResource EnumEq}, ConverterParameter=Quiet}"
                                     Command="{Binding SelectModeCommand}" CommandParameter="{x:Static app:FanModes.Quiet}"/>
