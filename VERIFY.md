@@ -332,8 +332,9 @@ What the counts mean, and they are the whole point of this step:
       Win32 error <n>` means the collections were refused, `fault in raw-input window
       creation` means the message-only window was never made, and `fault in WMI event
       subscription` means the provider refused the subscription, usually for want of
-      elevation. Nothing in the app shows a banner or a status line for any of these, so
-      this line is the only place a dead channel ever says so
+      elevation. If **both** channels failed the window says so once, in a banner. If only
+      one failed, or a fault happened after a channel was already open, this line is the
+      only place it is ever said
 
 Two things about how the block is written, so it is not misread. Repeats of one shape
 are recorded once and only counted after that: one line per fault site, one per packet
