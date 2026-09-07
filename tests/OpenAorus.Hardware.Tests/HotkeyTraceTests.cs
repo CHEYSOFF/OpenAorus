@@ -161,6 +161,57 @@ public class HotkeyTraceTests
     }
 
     [Fact]
+    public void Packets_of_one_length_given_up_on_at_different_sites_are_listed_separately()
+    {
+        // THE WHOLE PROMISE OF THIS CLASS, AT ITS THINNEST POINT. A short copy out of
+        // GetRawInputData and a walk that found nothing in a packet it received whole are
+        // unrelated failures with unrelated fixes - one is P/Invoke or WOW64 shaped, the other is
+        // the x64 header offset this trace was built to detect. They arrive with the same length,
+        // so if the length were the whole line they would render byte-identically and the one
+        // person who can run the bench could not tell which he was looking at.
+        var trace = new HotkeyTrace();
+        trace.RecordUnreadablePacket(36, "copy short");
+        trace.RecordUnreadablePacket(36, "walk rejected");
+
+        var lines = trace.Render()
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Where(l => l.Contains("packet unreadable"))     // not the counts line, which also says "unreadable"
+            .ToArray();
+
+        Assert.Equal(2, lines.Length);
+        Assert.Equal(2, lines.Distinct().Count());
+        Assert.Contains(lines, l => l.Contains("copy short"));
+        Assert.Contains(lines, l => l.Contains("walk rejected"));
+    }
+
+    [Fact]
+    public void One_site_repeating_still_costs_one_line_and_does_not_hide_the_other()
+    {
+        // The dedup key gained a second part; the flood rule has to survive that. If the header
+        // assumption is wrong every packet is walk-rejected, and that must not be able to bury the
+        // single copy-short line that would point somewhere else entirely.
+        var trace = new HotkeyTrace();
+        for (var i = 0; i < 200; i++) trace.RecordUnreadablePacket(36, "walk rejected");
+        trace.RecordUnreadablePacket(36, "copy short");
+
+        var text = trace.Render();
+        Assert.Equal(201, trace.UnreadablePacketCount);
+        Assert.Equal(1, CountOccurrences(text, "walk rejected"));
+        Assert.Equal(1, CountOccurrences(text, "copy short"));
+    }
+
+    [Fact]
+    public void A_packet_recorded_without_a_site_reads_as_it_always_did()
+    {
+        // The site is optional, and a caller with nothing to say must not put an empty pair of
+        // brackets in the dump.
+        var trace = new HotkeyTrace();
+        trace.RecordUnreadablePacket(36);
+
+        Assert.Contains("WM_INPUT packet unreadable: 36 bytes", trace.Render());
+    }
+
+    [Fact]
     public void An_event_shape_that_keeps_arriving_is_listed_once_and_counted()
     {
         // Brightness events arrive on this class too, one per step of a ramp, and none of them

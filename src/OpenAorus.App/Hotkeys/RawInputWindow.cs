@@ -1,6 +1,13 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using OpenAorus.Hardware.Hotkeys;
+
+// So a test can pin that the native registration array is built from Usages and nothing else.
+// The array is what actually reaches the OS; Usages is only the table it is supposed to be read
+// from, and an edit that hardcoded a different array inside Devices would register the standard
+// keyboard page with every usage test still green.
+[assembly: InternalsVisibleTo("OpenAorus.Hardware.Tests")]
 
 namespace OpenAorus.App.Hotkeys;
 
@@ -37,20 +44,27 @@ namespace OpenAorus.App.Hotkeys;
 /// becomes an unhandled exception on a callback.
 /// </para>
 /// <para>
-/// Nothing here is exercised by a test beyond <see cref="Usages"/>, the constants and the
-/// quiet-failure contract. The registration call, the window and the window procedure need a
-/// desktop; VERIFY 8.1 and 8.2 are what confirm them.
+/// Nothing here is exercised by a test beyond <see cref="Usages"/>, the array
+/// <see cref="Devices"/> builds from it, the constants and the quiet-failure contract. The
+/// registration call, the window and the window procedure need a desktop, and the branch where
+/// <c>RegisterRawInputDevices</c> returns FALSE cannot be reached at all without one; VERIFY 8.1
+/// and 8.2 are what confirm them, and <c>RawInputWindowTests</c> lists what that leaves uncovered.
 /// </para>
 /// </remarks>
 public sealed class RawInputWindow : IHotkeySource
 {
     /// <summary>The vendor collections this app listens to, and nothing else.</summary>
-    public static IReadOnlyList<(ushort Page, ushort Usage)> Usages { get; } = new[]
+    /// <remarks>Wrapped, not assigned. <see cref="IReadOnlyList{T}"/> over an array can be cast
+    /// back to the array and written, and what this table leaves out - the standard keyboard page,
+    /// which under <c>RIDEV_INPUTSINK</c> in an elevated process is a keylogger's data flow - is
+    /// meant to be structural rather than a promise about the code. The same pattern, for the same
+    /// reason, as <c>KeyLayout.Slots</c>.</remarks>
+    public static IReadOnlyList<(ushort Page, ushort Usage)> Usages { get; } = Array.AsReadOnly(new[]
     {
         ((ushort)0xFF01, (ushort)0x2209),
         ((ushort)0xFF02, (ushort)0x0001),   // the Fn hotkey collection
         ((ushort)0xFF00, (ushort)0xFF00),
-    };
+    });
 
     /// <summary><c>WM_INPUT</c>.</summary>
     public const int WmInput = 0x00FF;
@@ -73,8 +87,19 @@ public sealed class RawInputWindow : IHotkeySource
     private const uint RidInput = 0x10000003;
 
     private const string MessageSite = "WM_INPUT";
+    private const string WindowSite = "raw-input window creation";
     private const string RegistrationSite = "raw-input registration";
     private const string TeardownSite = "raw-input teardown";
+
+    // Why a WM_INPUT packet was given up on. These are the whole value of the packet lines: a
+    // short copy and a walk that found nothing are unrelated problems with unrelated fixes, and
+    // rendering both as "unreadable, 36 bytes" tells the one person who can run the bench nothing.
+    // Constants, because HotkeyTrace deduplicates packets by length and cause together and a
+    // string built per message would grow that set without bound.
+    private const string SizeQueryFailed = "size query failed";
+    private const string OverCap = "over cap";
+    private const string CopyShort = "copy short";
+    private const string WalkRejected = "walk rejected";
 
     /// <summary><c>HWND_MESSAGE</c>.</summary>
     private static readonly IntPtr HwndMessage = new(-3);
@@ -118,6 +143,12 @@ public sealed class RawInputWindow : IHotkeySource
         if (_started) return;
         _started = true;
 
+        // Moved on as the code passes each stage, so a throw is filed under the call that was
+        // actually running. Recording every start failure as a registration fault makes the dump
+        // read "fault in raw-input registration: InvalidOperationException: The calling thread
+        // must be STA", which points triage at a call that never happened.
+        var site = WindowSite;
+
         try
         {
             // Message-only: no desktop presence, no taskbar entry, and it cannot be activated.
@@ -130,12 +161,21 @@ public sealed class RawInputWindow : IHotkeySource
             _source = new HwndSource(parameters);
             _source.AddHook(OnMessage);
 
+            site = RegistrationSite;
+
+            // ONE WINDOW PER DEVICE CLASS PER PROCESS. RegisterRawInputDevices is documented to
+            // allow only one window per raw input device class within a process - the window from
+            // the last call - and it replaces the earlier one without failing. Nothing else in
+            // this process registers for raw input today. If anything ever does, this window stops
+            // receiving WM_INPUT: the Fn keys die with no error, no fault and no line in the dump,
+            // and this comment is the only place that would explain it.
             var devices = Devices(RidevInputSink, _source.Handle);
             if (!RegisterRawInputDevices(devices, (uint)devices.Length, (uint)Marshal.SizeOf<RawInputDevice>()))
             {
-                // Read immediately: anything else on this line could clear it.
+                // Read immediately: anything else on this line could clear it. Nothing covers this
+                // branch or the read - see the OWNER VERIFY note in RawInputWindowTests.
                 var error = Marshal.GetLastWin32Error();
-                Fail($"Win32 error {error}");
+                Fail(RegistrationSite, $"Win32 error {error}");
                 return;
             }
 
@@ -147,18 +187,23 @@ public sealed class RawInputWindow : IHotkeySource
             // Broad on purpose. A machine where the window cannot be created is a machine with no
             // Fn keys, not a machine that fails to start: the WMI channel may still work, the fan
             // and lighting panels are untouched, and the app has to come up either way.
-            Fail($"{ex.GetType().Name}: {ex.Message}");
+            Fail(site, $"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
     /// <summary>Gives the collections back and destroys the window.</summary>
     public void Dispose() => SafeTearDown();
 
-    private void Fail(string detail)
+    /// <summary>Gives up on the channel, quietly, naming where it gave up.</summary>
+    /// <param name="site">The call that actually failed. Not always the registration: a start can
+    /// fail before any registration is attempted, and filing that under the registration sends
+    /// whoever reads the dump to a call that never ran.</param>
+    /// <param name="detail">What went wrong.</param>
+    private void Fail(string site, string detail)
     {
         IsListening = false;
         StartError = "The Fn keys cannot be listened for: " + detail;
-        _trace.RecordFault(RegistrationSite, detail);
+        _trace.RecordFault(site, detail);
         SafeTearDown();
     }
 
@@ -197,7 +242,12 @@ public sealed class RawInputWindow : IHotkeySource
         _source = null;
     }
 
-    private static RawInputDevice[] Devices(int flags, IntPtr target) => Usages
+    /// <summary>Builds the native registration array from <see cref="Usages"/>, in table order.</summary>
+    /// <remarks>Internal rather than private so a test can compare what is handed to the OS
+    /// against the table it is supposed to come from. That table being right is worth nothing on
+    /// its own: this array is what actually registers, and a hardcoded one here would put the
+    /// standard keyboard page under an input sink with every usage test still green.</remarks>
+    internal static RawInputDevice[] Devices(int flags, IntPtr target) => Usages
         .Select(u => new RawInputDevice
         {
             UsagePage = u.Page,
@@ -233,21 +283,24 @@ public sealed class RawInputWindow : IHotkeySource
 
     private void Receive(IntPtr packet)
     {
-        // The header size is the one RawInputBuffer's walk assumes. It is also checked for us:
-        // GetRawInputData is documented to fail outright if it does not match the real
-        // RAWINPUTHEADER, so a wrong value here is a dead channel rather than a misread packet.
+        // The header size is the one RawInputBuffer's walk assumes, so the two cannot disagree.
+        // How the OS treats a wrong value here is less certain than it looks: the documented
+        // cbSizeHeader validation - fail outright if it is not sizeof(RAWINPUTHEADER) - is written
+        // against DefRawInputProc, not GetRawInputData, so a wrong value being a dead channel
+        // rather than a misread packet is a reading of the neighbouring page and not a guarantee.
+        // What the trace records below is what actually settles it on the bench.
         var headerBytes = (uint)RawInputBuffer.HeaderSize;
 
         var size = 0u;
         if (GetRawInputData(packet, RidInput, IntPtr.Zero, ref size, headerBytes) != 0 || size == 0)
         {
-            _trace.RecordUnreadablePacket(0);
+            _trace.RecordUnreadablePacket(0, SizeQueryFailed);
             return;
         }
 
         if (size > MaxPacketBytes)
         {
-            _trace.RecordUnreadablePacket(size);
+            _trace.RecordUnreadablePacket(size, OverCap);
             return;
         }
 
@@ -266,17 +319,21 @@ public sealed class RawInputWindow : IHotkeySource
 
         if (copied != (uint)_receive.Length)
         {
-            _trace.RecordUnreadablePacket(_receive.Length);
+            // Named apart from the walk below, which reports the same length. The OS agreed a size
+            // and then did not fill it: a P/Invoke or WOW64-shaped problem, and nothing to do with
+            // the header offset. Reading these two as one line sends the bench after the wrong one.
+            _trace.RecordUnreadablePacket(_receive.Length, CopyShort);
             return;
         }
 
         var reports = RawInputBuffer.Reports(_receive);
         if (reports.Count == 0)
         {
-            // Written down rather than dropped. A packet that arrives and holds nothing readable
-            // is what an x64 header assumption gone wrong looks like, and it is invisible
-            // otherwise - see RawInputBuffer's remarks and HotkeyTrace's.
-            _trace.RecordUnreadablePacket(_receive.Length);
+            // Written down rather than dropped. A packet that arrives whole and holds nothing
+            // readable is what an x64 header assumption gone wrong looks like - the one failure
+            // this trace was built to detect - and it is invisible otherwise. See RawInputBuffer's
+            // remarks and HotkeyTrace's, including what a length of exactly 36 would mean here.
+            _trace.RecordUnreadablePacket(_receive.Length, WalkRejected);
             return;
         }
 
@@ -309,8 +366,9 @@ public sealed class RawInputWindow : IHotkeySource
         }
     }
 
+    /// <summary><c>RAWINPUTDEVICE</c>. Internal only so <see cref="Devices"/> can be.</summary>
     [StructLayout(LayoutKind.Sequential)]
-    private struct RawInputDevice
+    internal struct RawInputDevice
     {
         public ushort UsagePage;
         public ushort Usage;

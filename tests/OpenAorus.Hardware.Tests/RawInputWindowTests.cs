@@ -17,8 +17,18 @@ namespace OpenAorus.Hardware.Tests;
 /// <para>
 /// Everything else in <see cref="RawInputWindow"/> - the registration call itself, the
 /// message-only window, the window procedure - needs a desktop and a keyboard. It is OWNER
-/// VERIFY work: VERIFY 8.1 and 8.2. What is left testable here is the usage table, the
-/// documented constants, the allocation bound, and the promise that a failure to start is quiet.
+/// VERIFY work: VERIFY 8.1 and 8.2. What is left testable here is the usage table, the native
+/// array built from it, the documented constants, the allocation bound, and the promise that a
+/// failure to start is quiet.
+/// </para>
+/// <para>
+/// OWNER VERIFY, AND IT CANNOT BE ANYTHING ELSE: the branch where <c>RegisterRawInputDevices</c>
+/// returns FALSE - including the <c>Marshal.GetLastWin32Error()</c> read that has to happen on
+/// the very next line to be meaningful - has no coverage here and can get none. Reaching it needs
+/// a real window handle, which needs a desktop and an STA thread, so no test in this project can
+/// make the call happen at all, let alone make it fail. It joins the registration call, the
+/// window and the window procedure on the list VERIFY 8.1 and 8.2 exist to work through. What
+/// this file can pin is only that the failure is quiet and says where it happened.
 /// </para>
 /// </remarks>
 public class RawInputWindowTests
@@ -59,9 +69,21 @@ public class RawInputWindowTests
     [Fact]
     public void No_collection_is_registered_twice()
     {
-        // RegisterRawInputDevices refuses the whole array if one entry is a duplicate, so a
-        // copy-paste in the table would silently disable every Fn key rather than one.
+        // A duplicate entry has no documented meaning that could be relied on either way, and the
+        // table is meant to say what this app listens to once. Whether it would be ignored, or
+        // take the whole array down with it and disable every Fn key at once, is exactly the
+        // question nobody should have to answer from a bug report.
         Assert.Equal(RawInputWindow.Usages.Count, RawInputWindow.Usages.Distinct().Count());
+    }
+
+    [Fact]
+    public void The_usage_table_cannot_be_written_through_its_own_type()
+    {
+        // IReadOnlyList<T> over a bare array casts straight back to the array. The keyboard page
+        // being absent is supposed to be structural, and a static table anything in the process
+        // could append to would make it a promise about the code instead.
+        Assert.Null(RawInputWindow.Usages as (ushort Page, ushort Usage)[]);
+        Assert.True(((System.Collections.IList)RawInputWindow.Usages).IsReadOnly);
     }
 
     [Fact]
@@ -116,19 +138,69 @@ public class RawInputWindowTests
         window.Start();
         window.Start();     // a second call does nothing, failed or not
 
-        // In this runner it is the failure path that runs - an xunit test thread is MTA, and WPF
-        // refuses to build a window on one - so the catch, the recorded fault and the message are
-        // all really executed here. The branch is kept because a runner that happened to be STA
-        // would register for real, and a test that then failed would be reporting on the runner.
-        if (!window.IsListening)
-        {
-            Assert.NotNull(window.StartError);
-            Assert.Contains("Fn", window.StartError);
-            Assert.Equal(1, trace.FaultCount);          // said once, not once per attempt
-        }
+        // ASSERTED, NOT BRANCHED ON. The failure path is what runs here because an xunit thread is
+        // MTA and WPF refuses to build a window on one, and that is a fact about the runner rather
+        // than a promise. Hiding the assertions behind "if (!IsListening)" made this test go green
+        // on the day someone adds an STA runner setting while covering nothing at all - the same
+        // invisible failure the whole hotkey trace exists to eliminate. So the precondition is
+        // pinned instead: if the apartment ever changes, this fails loudly and is rewritten, and
+        // it never quietly stops testing anything.
+        Assert.Equal(ApartmentState.MTA, Thread.CurrentThread.GetApartmentState());
+        Assert.False(window.IsListening);
+        Assert.NotNull(window.StartError);
+        Assert.Contains("Fn", window.StartError);
+        Assert.Equal(1, trace.FaultCount);              // said once, not once per attempt
 
         window.Dispose();
         Assert.False(window.IsListening);
+    }
+
+    [Fact]
+    public void A_start_that_never_reached_the_registration_is_not_filed_under_it()
+    {
+        // The window cannot be built on this thread, so nothing is ever registered. Naming the
+        // registration anyway would put "fault in raw-input registration: InvalidOperationException:
+        // The calling thread must be STA" in the dump and send the one hardware session after a
+        // call that never happened.
+        var trace = new HotkeyTrace();
+        var window = new RawInputWindow(trace);
+
+        window.Start();
+
+        Assert.False(window.IsListening);
+        var text = trace.Render();
+        Assert.Contains("raw-input window creation", text);
+        Assert.DoesNotContain("fault in raw-input registration", text);
+
+        window.Dispose();
+    }
+
+    [Fact]
+    public void The_registration_array_is_built_from_the_usage_table_and_nothing_else()
+    {
+        // The five tests above read Usages. Usages is not what registers - this array is, and it
+        // is built by a method they never touch. An edit that hardcoded the standard keyboard page
+        // in there would leave all five green, which is the last gap in the guard.
+        var devices = RawInputWindow.Devices(RawInputWindow.RidevInputSink, IntPtr.Zero);
+
+        Assert.Equal(
+            RawInputWindow.Usages.Select(u => (u.Page, u.Usage)).ToArray(),
+            devices.Select(d => (d.UsagePage, d.Usage)).ToArray());
+        Assert.All(devices, d => Assert.Equal(RawInputWindow.RidevInputSink, d.Flags));
+    }
+
+    [Fact]
+    public void Giving_the_collections_back_asks_for_the_same_ones_with_a_null_target()
+    {
+        // RIDEV_REMOVE has to name exactly what was registered, and wants a null target; an
+        // unregistration that missed a collection would leave this process on the OS's list for
+        // it after the window is gone.
+        var devices = RawInputWindow.Devices(RawInputWindow.RidevRemove, IntPtr.Zero);
+
+        Assert.Equal(
+            RawInputWindow.Usages.Select(u => (u.Page, u.Usage)).ToArray(),
+            devices.Select(d => (d.UsagePage, d.Usage)).ToArray());
+        Assert.All(devices, d => Assert.Equal(IntPtr.Zero, d.Target));
     }
 }
 

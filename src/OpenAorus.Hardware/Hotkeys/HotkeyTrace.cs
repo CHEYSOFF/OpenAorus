@@ -24,7 +24,8 @@ namespace OpenAorus.Hardware.Hotkeys;
 /// <para>
 /// Everything here is bounded before it is written. Both recorders run on callbacks that fire
 /// regardless of focus, so anything that can repeat per message costs one line and then only a
-/// count: a fault at one site, a packet of one length, an event carrying one set of properties.
+/// count: a fault at one site, a packet of one length given up on at one site, an event carrying
+/// one set of properties.
 /// Reports are the exception and are written every time, because their bytes are the payload -
 /// and because a stream of them evicting older ones is the ring working, not a flood. The lines
 /// are a ring of <see cref="Capacity"/>; the counts are not capped, because they are the evidence
@@ -84,15 +85,39 @@ public sealed class HotkeyTrace
     }
 
     /// <summary>Records a <c>WM_INPUT</c> message that held nothing this app could read.</summary>
+    /// <remarks>
+    /// <para>
+    /// THE CAUSE IS THE POINT, NOT THE LENGTH. A packet can be unreadable for reasons with
+    /// nothing to do with each other - the copy out of the OS came up short, which is a P/Invoke
+    /// or WOW64-shaped problem, against the walk finding nothing in a packet it did receive
+    /// whole, which is the x64 header-offset reading <see cref="RawInputBuffer"/> warns about and
+    /// the reason this trace exists at all. Those have unrelated fixes, so they must not render
+    /// as the same line. The length alone does not separate them; the site does.
+    /// </para>
+    /// <para>
+    /// One reading to carry to the dump, because it is otherwise nobody's: a packet of exactly
+    /// 36 bytes is <c>24 + 8 + 4</c> - an x64 header, <c>dwSizeHid</c> and <c>dwCount</c>, and one
+    /// four-byte report, which is the length a well-formed packet from the documented collections
+    /// has. Seeing 36 is therefore evidence FOR the header offset rather than against it, and
+    /// points at the copy path instead. That is an inference from the layout, not something
+    /// watched on hardware, and VERIFY 8.2 is still what settles it.
+    /// </para>
+    /// </remarks>
     /// <param name="bytes">The length the OS reported, or 0 if even that could not be read. Taken
     /// as a <see cref="long"/> so an implausible <c>uint</c> reaches the dump as itself rather
     /// than as a negative number.</param>
-    public void RecordUnreadablePacket(long bytes)
+    /// <param name="cause">Where in the receive path it was given up on, or null for a caller
+    /// that has nothing to say. Packets are deduplicated by length and cause together, so this
+    /// has to be a constant naming a place in the code - the same rule
+    /// <see cref="RecordFault(string, string)"/> draws, and for the same reason.</param>
+    public void RecordUnreadablePacket(long bytes, string? cause = null)
     {
         lock (_gate)
         {
             UnreadablePacketCount++;
-            WriteOnce($"packet:{bytes}", $"WM_INPUT packet unreadable: {(bytes <= 0 ? "size unknown" : bytes + " bytes")}");
+            var size = bytes <= 0 ? "size unknown" : bytes + " bytes";
+            var at = cause is null ? string.Empty : " (" + cause + ")";
+            WriteOnce($"packet:{bytes}:{cause}", $"WM_INPUT packet unreadable{at}: {size}");
         }
     }
 
@@ -187,7 +212,7 @@ public sealed class HotkeyTrace
 
     /// <summary>Appends a line the first time this shape is seen, and nothing after that.</summary>
     /// <remarks>Callers hold the lock. The set of shapes is bounded by the callers: a site name,
-    /// a packet length, a property list.</remarks>
+    /// a packet length paired with one of a fixed handful of sites, a property list.</remarks>
     private void WriteOnce(string shape, string line)
     {
         if (_saidOnce.Add(shape)) Write(line);
