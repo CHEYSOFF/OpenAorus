@@ -54,17 +54,17 @@ public sealed record HotkeyAction(
 /// registers, so no volume signal exists in <see cref="HotkeySignal"/> and nothing here could
 /// act on one. <em>Display brightness</em> is a policy decision made in this class: it arrives on
 /// <c>0xFF00/0xFF00</c>, which <em>is</em> registered, so it reaches
-/// <see cref="Decide"/> and is refused there. Do not read the two as one guarantee - deleting
-/// the brightness arm would bring the duplicate overlay straight back, while deleting a volume
-/// arm is impossible because there is none.
+/// <see cref="Decide"/> and is refused there. Do not read the two as one guarantee - the
+/// brightness refusal is a rule this class keeps and could stop keeping, while a volume arm
+/// cannot be deleted because there is none to delete.
 /// </para>
 /// <para>
 /// That refusal is not something a settings file can reach. <see cref="Decide"/> builds the
 /// action without an overlay flag and then sets it, at one exit, from
 /// <see cref="MayDraw"/> - whose switch names the serviced signals and answers false to
 /// everything else - and an ignored signal is flattened to <see cref="HotkeyAction.None"/>
-/// before that. So the only way to make an unserviced signal draw is to add a case to
-/// <see cref="MayDraw"/>, not to set a flag.
+/// before that. So making an unserviced signal draw takes two edits, in <see cref="Service"/>
+/// and in <see cref="MayDraw"/>, and no combination of flags is one of them.
 /// </para>
 /// <para>
 /// The <c>default</c> arm is deliberately the ignore arm. A signal added to
@@ -166,10 +166,12 @@ public static class HotkeyPolicy
                 return new HotkeyAction(HotkeyOutcome.Notify, null, 0, "Wi-Fi off");
 
             case HotkeySignal.DisplayBrightness:
-                // Named rather than left to the default arm, because this one is a choice. The
-                // panel brightness really does arrive here, Windows really does already draw for
-                // it, and a second card is the complaint this release answers. Unlike volume,
-                // nothing structural is stopping it - only this line.
+                // Documentary, not load-bearing: the default arm returns the same nothing, so
+                // deleting this case changes no behaviour. It is here to say out loud what the
+                // default would otherwise decide silently - the panel brightness really does
+                // arrive, Windows really does already draw for it, and a second card is the
+                // complaint this release answers. What enforces that is the Ignore outcome
+                // itself, which Decide flattens to None before anyone asks about drawing.
                 return HotkeyAction.None;
 
             default:
@@ -182,9 +184,13 @@ public static class HotkeyPolicy
     /// <summary>Whether the owner asked to see this signal on screen.</summary>
     /// <remarks>
     /// The only reader of the overlay toggles, and total: a signal with no case here cannot draw
-    /// under any settings file. That is what makes the brightness suppression un-configurable
-    /// rather than merely off by default - there is no switch to find, in this class or in
-    /// <see cref="HotkeySettings"/>.
+    /// under any settings file, because there is no switch to find, in this class or in
+    /// <see cref="HotkeySettings"/>. That is the second layer of the brightness suppression, not
+    /// the first - brightness never reaches this method at all, since <see cref="Service"/>
+    /// classifies it as <see cref="HotkeyOutcome.Ignore"/> and <see cref="Decide"/> flattens
+    /// Ignore to <see cref="HotkeyAction.None"/> before asking. Answering true for brightness
+    /// here would change nothing on its own; the totality is what would catch it if that
+    /// classification or that flattening ever went away.
     /// </remarks>
     private static bool MayDraw(HotkeySignal signal, HotkeySettings settings) => signal switch
     {

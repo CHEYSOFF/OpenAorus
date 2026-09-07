@@ -97,6 +97,8 @@ public class HotkeyPolicyTests
     [Fact]
     public void Every_fan_mode_has_a_next_one()
     {
+        // Totality only - it fails only if NextMode returns an undefined value, and killed none
+        // of six mutations to the ring. A_mode_this_app_has_never_defined... covers the property.
         foreach (var mode in Enum.GetValues<FanMode>())
             Assert.Contains(HotkeyPolicy.NextMode(mode), Enum.GetValues<FanMode>());
     }
@@ -159,10 +161,10 @@ public class HotkeyPolicyTests
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(50)]
-    [InlineData(100)]
-    public void The_backlight_signal_carries_its_level_through(int level)
+    [InlineData(0, "Keyboard backlight 0 %")]
+    [InlineData(50, "Keyboard backlight 50 %")]
+    [InlineData(100, "Keyboard backlight 100 %")]
+    public void The_backlight_signal_carries_its_level_through(int level, string expected)
     {
         var a = HotkeyPolicy.Decide(
             new HotkeyEvent(HotkeySignal.KeyboardBacklightLevel, level), FanMode.Normal, AllOverlaysOn());
@@ -170,20 +172,26 @@ public class HotkeyPolicyTests
         Assert.Equal(HotkeyOutcome.SetBacklightLevel, a.Outcome);
         Assert.Equal(level, a.Level);
         Assert.Null(a.Mode);
+        // The level reaches the lighting panel as a number, but it reaches the owner as this
+        // string. Pinning only Level leaves the half the owner actually reads unchecked.
+        Assert.Equal(expected, a.Text);
     }
 
     [Theory]
-    [InlineData(HotkeySignal.TouchpadEnabled)]
-    [InlineData(HotkeySignal.TouchpadDisabled)]
-    [InlineData(HotkeySignal.WifiEnabled)]
-    [InlineData(HotkeySignal.WifiDisabled)]
-    public void The_touchpad_and_radio_signals_are_display_only(HotkeySignal signal)
+    [InlineData(HotkeySignal.TouchpadEnabled, "Touchpad on")]
+    [InlineData(HotkeySignal.TouchpadDisabled, "Touchpad off")]
+    [InlineData(HotkeySignal.WifiEnabled, "Wi-Fi on")]
+    [InlineData(HotkeySignal.WifiDisabled, "Wi-Fi off")]
+    public void The_touchpad_and_radio_signals_are_display_only(HotkeySignal signal, string expected)
     {
         var a = HotkeyPolicy.Decide(new HotkeyEvent(signal), FanMode.Normal, AllOverlaysOn());
 
         // The firmware already did the toggle. There is nothing to write back.
         Assert.Equal(HotkeyOutcome.Notify, a.Outcome);
-        Assert.NotEqual("", a.Text);
+        // These four do nothing but say something, so the exact words are the whole behaviour:
+        // an overlay reading "Wi-Fi off" as the radio comes up is this path being wrong, and
+        // wrong silently. "Not empty" would not have noticed.
+        Assert.Equal(expected, a.Text);
     }
 
     [Theory]
