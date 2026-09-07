@@ -122,7 +122,7 @@ public static class HotkeyPolicy
     /// <c>NextMode(current)</c> in the fan arm of <see cref="Service"/> with
     /// <c>NamedMode(signal.Signal) ?? current</c>. Keeping it here and tested is what stops the
     /// recovered information being thrown away, and the three codes stay three signals so there
-    /// is something left to switch to. <c>VERIFY.md</c> 8.5 is the observation that decides.
+    /// is something left to switch to. <c>VERIFY.md</c> 7.5 is the observation that decides.
     /// </remarks>
     /// <param name="signal">The decoded signal.</param>
     /// <returns>The named mode, or null if this signal names none.</returns>
@@ -147,7 +147,7 @@ public static class HotkeyPolicy
             case HotkeySignal.FanModeAutoHigh:
             {
                 // The spec asks for a cycle. NamedMode(signal.Signal) is the other reading,
-                // kept beside this and one line away - see its remarks and VERIFY 8.5.
+                // kept beside this and one line away - see its remarks and VERIFY 7.5.
                 var next = NextMode(current);
                 return new HotkeyAction(HotkeyOutcome.CycleFanMode, next, 0, $"Fan mode: {next}");
             }

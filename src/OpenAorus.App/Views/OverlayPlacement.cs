@@ -7,7 +7,7 @@ namespace OpenAorus.App.Views;
 /// Doubles rather than <c>Rect</c>: this project enables WPF and WinForms together, so
 /// <c>Point</c> and <c>Size</c> are ambiguous and keeping them out of the signature costs
 /// nothing. Choosing the monitor and converting its bounds to DIPs stays in the code-behind,
-/// where a test cannot reach it - see VERIFY 8.8.
+/// where a test cannot reach it - see VERIFY 7.8.
 /// </remarks>
 public static class OverlayPlacement
 {

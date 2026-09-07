@@ -24,7 +24,7 @@ namespace OpenAorus.Hardware.Hotkeys;
 /// tables in <c>docs/research/fn-hotkey-signals.md</c> agree with each other - the leading byte of
 /// every documented pattern is then the report's own length - but it is a reading of decompiled
 /// field names, not something anyone has seen on hardware. If it is wrong, every pattern below is
-/// off by one byte and every Fn key silently does nothing. <c>VERIFY.md</c> step 8.2, the step
+/// off by one byte and every Fn key silently does nothing. <c>VERIFY.md</c> step 7.2, the step
 /// that presses each Fn combination and watches for exactly one action, is what disproves it.
 /// </para>
 /// <para>

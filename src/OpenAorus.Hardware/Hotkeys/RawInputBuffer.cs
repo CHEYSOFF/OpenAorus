@@ -17,7 +17,7 @@ namespace OpenAorus.Hardware.Hotkeys;
 /// Nobody has yet watched a real <c>WM_INPUT</c> buffer come out of this machine. If the offset is
 /// wrong, <c>dwSizeHid</c> and <c>dwCount</c> read as garbage, every buffer is rejected by the
 /// caps below, and no Fn key ever does anything - a silent, total failure rather than a wrong
-/// action. <c>VERIFY.md</c> step 8.2, pressing each Fn combination and watching for exactly one
+/// action. <c>VERIFY.md</c> step 7.2, pressing each Fn combination and watching for exactly one
 /// action, is what disproves it.
 /// </para>
 /// <para>

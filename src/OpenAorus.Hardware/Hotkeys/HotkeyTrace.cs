@@ -12,7 +12,7 @@ namespace OpenAorus.Hardware.Hotkeys;
 /// hardware; see its remarks. If that reading is inverted, every real report fails the decoder's
 /// leading-byte check and is rejected outright, so the bench sees nothing happen at all. "Nothing
 /// happens" is also what a chassis that emits no such reports looks like, and the research lists
-/// that as an open question. Without a record of what arrived, <c>VERIFY.md</c> 8.2 cannot tell
+/// that as an open question. Without a record of what arrived, <c>VERIFY.md</c> 7.2 cannot tell
 /// the two apart, and the release cannot be verified.
 /// </para>
 /// <para>
@@ -40,7 +40,7 @@ namespace OpenAorus.Hardware.Hotkeys;
 public sealed class HotkeyTrace
 {
     /// <summary>How many entries the ring keeps.</summary>
-    /// <remarks>Enough to hold a pass over the whole Fn row, which is what VERIFY 8.2 asks the
+    /// <remarks>Enough to hold a pass over the whole Fn row, which is what VERIFY 7.2 asks the
     /// owner to do, and small enough that a stuck channel cannot fill a bug report.</remarks>
     public const int Capacity = 32;
 
@@ -100,7 +100,7 @@ public sealed class HotkeyTrace
     /// four-byte report, which is the length a well-formed packet from the documented collections
     /// has. Seeing 36 is therefore evidence FOR the header offset rather than against it, and
     /// points at the copy path instead. That is an inference from the layout, not something
-    /// watched on hardware, and VERIFY 8.2 is still what settles it.
+    /// watched on hardware, and VERIFY 7.2 is still what settles it.
     /// </para>
     /// </remarks>
     /// <param name="bytes">The length the OS reported, or 0 if even that could not be read. Taken

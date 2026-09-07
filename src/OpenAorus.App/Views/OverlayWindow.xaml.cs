@@ -124,7 +124,7 @@ public sealed partial class OverlayWindow : System.Windows.Window
     /// Correct on a single-DPI desktop by construction. On a mixed-DPI one the transform comes
     /// from this window's own source, which is the scale of whichever screen it was last shown
     /// on - so the card can land off-centre the first time it appears on the other monitor. That
-    /// is the one placement case that could not be reasoned out without hardware; VERIFY 8.8.
+    /// is the one placement case that could not be reasoned out without hardware; VERIFY 7.8.
     /// </remarks>
     /// <returns>The work area in DIPs.</returns>
     private System.Windows.Rect ScreenWorkArea()

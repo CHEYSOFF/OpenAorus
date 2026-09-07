@@ -24,7 +24,7 @@ namespace OpenAorus.App.Hotkeys;
 /// volume keys is excluded for the same reason and one more: not receiving them is what makes it
 /// impossible for this app to draw a second volume overlay. The cost is named in <c>VERIFY.md</c>:
 /// if a needed signal turns out to arrive only on the keyboard page, this cut hides it, and
-/// VERIFY 8.2 - press every Fn combination, write down which do nothing - is what would show that.
+/// VERIFY 7.2 - press every Fn combination, write down which do nothing - is what would show that.
 /// </para>
 /// <para>
 /// Deliberately thin. It receives, it writes down what arrived, and it hands the bytes to
@@ -47,8 +47,8 @@ namespace OpenAorus.App.Hotkeys;
 /// Nothing here is exercised by a test beyond <see cref="Usages"/>, the array
 /// <see cref="Devices"/> builds from it, the constants and the quiet-failure contract. The
 /// registration call, the window and the window procedure need a desktop, and the branch where
-/// <c>RegisterRawInputDevices</c> returns FALSE cannot be reached at all without one; VERIFY 8.1
-/// and 8.2 are what confirm them, and <c>RawInputWindowTests</c> lists what that leaves uncovered.
+/// <c>RegisterRawInputDevices</c> returns FALSE cannot be reached at all without one; VERIFY 7.1
+/// and 7.2 are what confirm them, and <c>RawInputWindowTests</c> lists what that leaves uncovered.
 /// </para>
 /// </remarks>
 public sealed class RawInputWindow : IHotkeySource

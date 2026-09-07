@@ -38,7 +38,7 @@ public static class WmiEventDecoder
 
     /// <summary>The property carrying the value this decodes.</summary>
     /// <remarks>Unconfirmed on hardware: the research names it and nothing has checked it. A
-    /// wrong name here is a subscription that runs and reports nothing - see VERIFY 8.1.</remarks>
+    /// wrong name here is a subscription that runs and reports nothing - see VERIFY 7.1.</remarks>
     public const string DataProperty = "Data";
 
     /// <summary>Decodes one event's <c>Data</c> value.</summary>
@@ -60,7 +60,7 @@ public static class WmiEventDecoder
     /// <remarks>The CIM type of <c>Data</c> is unconfirmed: the recovered code converts rather
     /// than casts, so it does not say. Taking the value as an <see cref="object"/> keeps that one
     /// unknown in a pure function a test can exercise, instead of in a catch block inside the
-    /// listener that no test can reach. VERIFY 8.1 is what settles the type.</remarks>
+    /// listener that no test can reach. VERIFY 7.1 is what settles the type.</remarks>
     public static HotkeyEvent? Decode(object? value) =>
         TryReadData(value, out var data) ? Decode(data) : null;
 

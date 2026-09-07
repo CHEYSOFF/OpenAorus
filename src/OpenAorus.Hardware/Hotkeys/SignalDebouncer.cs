@@ -36,7 +36,7 @@ public sealed class SignalDebouncer
 {
     /// <summary>How long one signal-and-level suppresses a repeat of itself, in milliseconds.</summary>
     /// <remarks>Chosen to sit above the gap between two channels describing one press and below a
-    /// deliberate double tap. Neither bound has been measured - VERIFY 8.4, five rapid presses, is
+    /// deliberate double tap. Neither bound has been measured - VERIFY 7.4, five rapid presses, is
     /// what measures them.</remarks>
     public const int WindowMs = 250;
 

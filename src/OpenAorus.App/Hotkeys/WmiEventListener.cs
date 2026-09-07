@@ -19,7 +19,7 @@ namespace OpenAorus.App.Hotkeys;
 /// The property name is unconfirmed on hardware. A wrong name is a subscription that runs and
 /// reports nothing, silently - so an event whose <c>Data</c> was not where it was expected is
 /// written to the trace along with the property names that did arrive, which is what turns
-/// VERIFY 8.1 from a guess into a reading.
+/// VERIFY 7.1 from a guess into a reading.
 /// </para>
 /// <para>
 /// Thin, like the raw-input window: it receives, writes down what arrived, and hands the value
@@ -29,7 +29,7 @@ namespace OpenAorus.App.Hotkeys;
 /// </para>
 /// <para>
 /// Nothing here is exercised by a test beyond construction and teardown. A live subscription
-/// needs an elevated process and a Gigabyte WMI provider; VERIFY 8.1 is what confirms it.
+/// needs an elevated process and a Gigabyte WMI provider; VERIFY 7.1 is what confirms it.
 /// </para>
 /// </remarks>
 public sealed class WmiEventListener : IWmiEventSource
@@ -128,7 +128,7 @@ public sealed class WmiEventListener : IWmiEventSource
             object? data = null;
 
             // Walked rather than indexed. ManagementBaseObject's indexer throws when the property
-            // is absent, and "which properties did arrive" is the answer VERIFY 8.1 needs most.
+            // is absent, and "which properties did arrive" is the answer VERIFY 7.1 needs most.
             var properties = e.NewEvent?.Properties;
             if (properties is not null)
             {
@@ -153,7 +153,7 @@ public sealed class WmiEventListener : IWmiEventSource
     /// Public for the reason <see cref="RawInputWindow.Deliver"/> is: reaching it through a live
     /// subscription needs an elevated process and a Gigabyte provider, and this is the whole of
     /// what the callback does once it has the property bag. Walking the bag is what is left
-    /// unreachable, and VERIFY 8.1 is what confirms that half.
+    /// unreachable, and VERIFY 7.1 is what confirms that half.
     ///
     /// Checked, not assumed: an absent property, a value of an unexpected type and a number that
     /// will not fit all land in the second branch, and none of them is something to hand on. What
