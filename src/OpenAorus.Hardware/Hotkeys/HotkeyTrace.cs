@@ -233,7 +233,24 @@ public sealed class HotkeyTrace
     private static string Flatten(string text) =>
         text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
 
-    /// <summary>One report as spaced hex pairs, which is how the research tables read.</summary>
+    /// <summary>One report as spaced hex pairs. THE RESEARCH TABLES ARE DECIMAL.</summary>
+    /// <remarks>
+    /// <para>
+    /// The two do not line up and the reader has to convert: <c>docs/research/fn-hotkey-signals.md</c>
+    /// is written in decimal throughout - <c>4, 0, 0, 137</c> - and this prints <c>04 00 00 89</c>.
+    /// Comparing the dump against those tables is exactly what <c>VERIFY.md</c> 7.2 asks for, so
+    /// the conversion is not optional and 7.2 carries the crib for every value the tables use.
+    /// </para>
+    /// <para>
+    /// Hex anyway, and the reason is which way the mistake goes. A report is a fixed-width byte
+    /// string being read for a shape - a leading <c>04</c> or <c>09</c>, a last byte of <c>25</c>,
+    /// <c>26</c> or <c>27</c>, a pattern that would match if it were shifted along by one byte,
+    /// which is the single failure this whole trace exists to expose. Two characters per byte and
+    /// a column that never moves is what makes a shift visible at a glance; decimal is one to
+    /// three characters wide and hides it. VERIFY 7.2's own examples are written in these pairs,
+    /// so changing this would leave the checklist quoting a format the dump no longer produces.
+    /// </para>
+    /// </remarks>
     private static string Hex(byte[] report)
     {
         var sb = new StringBuilder(report.Length * 3);

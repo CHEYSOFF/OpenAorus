@@ -26,12 +26,29 @@ public sealed class FakeHotkeySource : IHotkeySource
     /// <summary>How many reports have been delivered, for tests that count rather than inspect.</summary>
     public int EmittedCount { get; private set; }
 
+    /// <summary>Set to make <see cref="Start"/> fail with this detail instead of opening.</summary>
+    /// <remarks>The real window fails the same way: it does not throw, it records the reason and
+    /// says it is not listening. A source in this state can never deliver anything, and
+    /// <see cref="Emit"/> refuses accordingly - a test that expected a report out of a channel
+    /// that never opened would be testing something no machine does.</remarks>
+    public string? FailToStartWith { get; set; }
+
+    /// <inheritdoc />
+    public bool IsListening { get; private set; }
+
+    /// <inheritdoc />
+    public string? StartError { get; private set; }
+
     public void Start()
     {
         // The real window registers its devices once and ignores a second call; so does this,
         // rather than pretending a second registration is an error a caller could hit.
         if (Disposed) throw new ObjectDisposedException(nameof(FakeHotkeySource));
+        if (Started) return;
         Started = true;
+
+        if (FailToStartWith is { } why) StartError = "The Fn keys cannot be listened for: " + why;
+        else IsListening = true;
     }
 
     /// <summary>Delivers one report, exactly as the vendor collection would.</summary>
@@ -51,6 +68,7 @@ public sealed class FakeHotkeySource : IHotkeySource
                 nameof(report));
         if (!Started) throw new InvalidOperationException("Start() was never called on this source.");
         if (Disposed) throw new InvalidOperationException("This source has been disposed.");
+        if (!IsListening) throw new InvalidOperationException("This source failed to start; nothing can arrive on it.");
 
         EmittedCount++;
         // Copied for the same reason the walk copies: the subscriber owns the array it is given,
@@ -58,7 +76,11 @@ public sealed class FakeHotkeySource : IHotkeySource
         ReportReceived?.Invoke((byte[])report.Clone());
     }
 
-    public void Dispose() => Disposed = true;
+    public void Dispose()
+    {
+        Disposed = true;
+        IsListening = false;
+    }
 }
 
 /// <summary>A WMI subscription that fires whatever a test tells it to.</summary>
@@ -80,10 +102,26 @@ public sealed class FakeWmiEventSource : IWmiEventSource
     /// <summary>How many events have been delivered.</summary>
     public int EmittedCount { get; private set; }
 
+    /// <summary>Set to make <see cref="Start"/> fail with this detail instead of subscribing.</summary>
+    /// <remarks>The shape the real listener fails in: no throw, a reason written down, and a
+    /// subscription that is not running - which is what a machine with no Gigabyte provider, or
+    /// one that refuses it for want of elevation, actually looks like.</remarks>
+    public string? FailToStartWith { get; set; }
+
+    /// <inheritdoc />
+    public bool IsListening { get; private set; }
+
+    /// <inheritdoc />
+    public string? StartError { get; private set; }
+
     public void Start()
     {
         if (Disposed) throw new ObjectDisposedException(nameof(FakeWmiEventSource));
+        if (Started) return;
         Started = true;
+
+        if (FailToStartWith is { } why) StartError = "The touchpad and Wi-Fi notices are unavailable: " + why;
+        else IsListening = true;
     }
 
     /// <summary>Delivers one event's <c>Data</c> value.</summary>
@@ -93,10 +131,15 @@ public sealed class FakeWmiEventSource : IWmiEventSource
     {
         if (!Started) throw new InvalidOperationException("Start() was never called on this source.");
         if (Disposed) throw new InvalidOperationException("This source has been disposed.");
+        if (!IsListening) throw new InvalidOperationException("This source failed to start; nothing can arrive on it.");
 
         EmittedCount++;
         EventReceived?.Invoke(data);
     }
 
-    public void Dispose() => Disposed = true;
+    public void Dispose()
+    {
+        Disposed = true;
+        IsListening = false;
+    }
 }

@@ -32,7 +32,17 @@ public static class DiagnosticsDump
     /// <param name="hotkeys">What the hotkey channels have seen, if they are wired up. Near the
     /// top on purpose: when an Fn key does nothing, whether the report arrived at all is the
     /// first thing worth knowing, and the only thing that separates a misread report from a
-    /// chassis that never sent one.</param>
+    /// chassis that never sent one.
+    ///
+    /// ONLY THE DIAGNOSTICS BUTTON CAN PRODUCE A FULL ONE. The channels are opened from
+    /// <c>MainViewModel</c> when the window comes up, so <c>--dump</c> - which exits before any
+    /// window exists - renders this section with every count at zero and the line
+    /// "nothing has arrived", every time, on every machine. That is character for character the
+    /// reading <c>VERIFY.md</c> 7.1 defines as "this chassis emits nothing on these channels", so
+    /// a dump exported from the command line is the easiest way there is to record a false
+    /// negative about the hardware. The checklist leads with the in-window button for that reason;
+    /// this section is only evidence when it came from there, after keys were actually
+    /// pressed.</param>
     /// <returns>The dump text.</returns>
     public static string Render(IGigabyteWmi wmi, ModelProfile profile, string appVersion, HotkeyTrace? hotkeys = null)
     {

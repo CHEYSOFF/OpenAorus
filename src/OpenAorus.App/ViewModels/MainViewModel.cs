@@ -111,6 +111,7 @@ public partial class MainViewModel : ObservableObject
             // draw on would be an elevated process listening for nothing.
             hotkeys.ActionRequested += OnHotkeyRequested;
             hotkeys.Start();
+            ReportSilentHotkeys(hotkeys);
         }
         // Applied on every model, not just writable ones: the saved lighting is restored even
         // where the fan and charge-limit writes are withheld. On a read-only model the result
@@ -124,6 +125,45 @@ public partial class MainViewModel : ObservableObject
         }
         await Battery.RefreshAsync();
         await SettingsVm.RefreshAsync();
+    }
+
+    /// <summary>
+    /// Says once, at startup, that neither hotkey channel could be opened.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both channels write down a start failure and neither throws, so without this the feature
+    /// disables itself in silence: the Fn row simply stops doing anything and the only trace is a
+    /// fault line in a diagnostics dump the owner has no reason to export.
+    /// </para>
+    /// <para>
+    /// Only when BOTH are shut. They carry different keys and fail for unrelated reasons - the WMI
+    /// subscription wants a Gigabyte provider and elevation, and a chassis without one is the
+    /// common case rather than a fault - so warning about half a row that still works would train
+    /// the owner to read past the banner.
+    /// </para>
+    /// <para>
+    /// Once, and from here rather than from the channels: <see cref="HotkeyService.StartError"/> is
+    /// written by <see cref="HotkeyService.Start"/> and by nothing on the message path, and this is
+    /// called from the one place that starts them. A channel that misbehaves per report cannot turn
+    /// into a banner per report.
+    /// </para>
+    /// <para>
+    /// Routed through <see cref="BannerState.ReportOverrideNotice"/>, for the reason the settings
+    /// notices above are: the Fn keys are not a per-model feature, so an owner on an unrecognised
+    /// model - whose banner is otherwise permanent - has to hear this too.
+    /// </para>
+    /// </remarks>
+    /// <param name="hotkeys">The service whose channels were just started.</param>
+    private void ReportSilentHotkeys(Hotkeys.HotkeyService hotkeys)
+    {
+        if (hotkeys.StartError is not { } why) return;
+
+        _bannerState.ReportOverrideNotice(BannerKind.Warning,
+            "Neither hotkey channel could be opened, so the Fn row is not being listened for and " +
+            $"the fan and backlight keys will do nothing this session. {why} " +
+            "Everything else in this window still works.");
+        SyncBanner();
     }
 
     public void Shutdown()
@@ -268,8 +308,19 @@ public partial class MainViewModel : ObservableObject
                 // five to seven steps paced at FanController.StepDelayMs. Queued, that is a
                 // machine spending the next minute working through presses nobody is still
                 // making; dropped, it is one mode change per press the owner can see land.
-                await SelectModeAsync(mode);
-                break;
+                //
+                // THE CARD IS DRAWN FROM INSIDE THE APPLY, NOT AFTER IT, and only for a press the
+                // gate accepted. Two things have to be true at once. A press the gate dropped -
+                // an unrecognised model, or a sequence already running - changed nothing, and
+                // since the saved mode only moves on success every dropped press names the same
+                // target: drawn, the card would promise "Fan mode: Gaming" over and over while
+                // the fans stay where they are. And a card drawn after the await is five to seven
+                // paced writes late, which on this feature is the whole complaint - it is judged
+                // against the volume card Windows draws on the keypress itself. So the hand-off
+                // runs the moment the press is accepted and before the first write, and a write
+                // that then fails is the banner's to report, exactly as a mode click's is.
+                await ApplyModeAsync(mode, () => Draw(action));
+                return;
 
             case HotkeyOutcome.SetBacklightLevel:
                 Lighting.NoteFirmwareBacklight(action.Level);
@@ -280,6 +331,16 @@ public partial class MainViewModel : ObservableObject
                 break;
         }
 
+        Draw(action);
+    }
+
+    /// <summary>Asks the window for the overlay card, if the owner asked to see this signal.</summary>
+    /// <remarks>The one place the card is raised, so what may draw stays a question about
+    /// <see cref="HotkeyAction.ShowOverlay"/> - which only <see cref="HotkeyPolicy"/> ever sets -
+    /// rather than one about where in the switch a caller happens to be.</remarks>
+    /// <param name="action">The action being acted on.</param>
+    private void Draw(HotkeyAction action)
+    {
         if (action.ShowOverlay) OverlayRequested?.Invoke(action.Text);
     }
 
@@ -305,11 +366,41 @@ public partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
+    /// <summary>The mode buttons in the window. Nothing here needs to know what came of it.</summary>
     [RelayCommand]
-    private async Task SelectModeAsync(FanMode mode)
+    private async Task SelectModeAsync(FanMode mode) => await ApplyModeAsync(mode);
+
+    /// <summary>
+    /// Puts the fans on one mode, telling the caller at once whether the attempt was even made.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two guards, and they mean different things to a caller. An unrecognised model can never be
+    /// written to, and a mode already being applied means this press is one the app is deliberately
+    /// dropping rather than queueing - see <see cref="OnHotkeyAsync"/>. Both come back as false
+    /// before anything is attempted.
+    /// </para>
+    /// <para>
+    /// A write that is attempted and refused is NOT one of those. It reaches the banner and the
+    /// status line below and returns true: the press was taken, the machine said no, and the owner
+    /// is told - which is the difference the hotkey overlay rests on.
+    /// </para>
+    /// <para>
+    /// <paramref name="onAccepted"/> runs synchronously, after the busy latch is closed and before
+    /// the first write, so a caller that wants to show something the instant a press lands does
+    /// not wait out five to seven paced writes for the right to do it. A re-entrant mode change
+    /// from inside it is dropped by the same latch, like any other press mid-apply.
+    /// </para>
+    /// </remarks>
+    /// <param name="mode">The mode to apply.</param>
+    /// <param name="onAccepted">Run once the change is going to be attempted; null for callers
+    /// with nothing to do at that moment.</param>
+    /// <returns>Whether the attempt was made - not whether it succeeded.</returns>
+    private async Task<bool> ApplyModeAsync(FanMode mode, Action? onAccepted = null)
     {
-        if (!CanWrite || IsBusy) return;
+        if (!CanWrite || IsBusy) return false;
         IsBusy = true;
+        onAccepted?.Invoke();
         try
         {
             var r = await _s.Fans.ApplyAsync(mode, FixedPercent, _s.Settings.ToCurve());
@@ -330,6 +421,8 @@ public partial class MainViewModel : ObservableObject
             }
         }
         finally { IsBusy = false; }
+
+        return true;
     }
 
     [RelayCommand]

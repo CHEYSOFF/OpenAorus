@@ -62,13 +62,19 @@ public sealed class AppServices
         // that told half the story about a keyboard that is only half working.
         var trace = new HotkeyTrace();
 
+        // Built here rather than in the initializer because the hotkey cursor has to be hung off
+        // this exact controller - the one every mode change in the app goes through.
+        var fans = new FanController(wmi, profile);
+
         return new AppServices
         {
             HotkeyTrace = trace,
-            Hotkeys = settings.Hotkeys.Enabled ? BuildHotkeys(settings, trace) : null,
+            Hotkeys = settings.Hotkeys.Enabled
+                ? BuildHotkeys(settings, trace, TrackAppliedMode(fans, settings.Mode))
+                : null,
             Profile = profile,
             Wmi = wmi,
-            Fans = new FanController(wmi, profile),
+            Fans = fans,
             Sensors = new SensorReader(wmi, profile),
             Battery = new BatteryController(wmi),
             Store = store,
@@ -83,15 +89,58 @@ public sealed class AppServices
         };
     }
 
+    /// <summary>
+    /// Follows the mode the fans are actually running, starting from the saved one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// NOT <c>settings.Mode</c>, and the difference is a safety one. The thermal watchdog forces
+    /// Turbo without writing it to settings.json - deliberately, so a forced Turbo is not what the
+    /// machine boots into next time - so the saved mode still names whatever the owner last chose
+    /// while the fans are at full, and the two diverge exactly when the machine is hottest.
+    /// </para>
+    /// <para>
+    /// A fan key cycling from the saved mode there takes a CPU at
+    /// <see cref="FanSafety.WatchdogTriggerTemperature"/> °C <em>down</em> from full - one press
+    /// from a saved Quiet applies Normal - and that apply re-arms the watchdog through
+    /// <see cref="FanController.Applied"/>, so the next poll forces Turbo again and the machine
+    /// flaps. From a saved Turbo the first press lands on Quiet at 90 °C.
+    /// </para>
+    /// <para>
+    /// Subscribed at the controller rather than at the callers, for the reason
+    /// <c>MainViewModel</c> subscribes the watchdog there: it covers the startup apply, the resume
+    /// apply, <c>--apply</c>, a mode click, the forced Turbo and the hotkey itself, and a call
+    /// site added later cannot forget it. <see cref="FanController.Applied"/> is raised only for a
+    /// sequence that succeeded, so a refused write leaves the cursor where the machine is.
+    /// </para>
+    /// </remarks>
+    /// <param name="fans">The controller every mode change goes through.</param>
+    /// <param name="saved">The mode the app starts believing in, before anything is applied.</param>
+    /// <returns>A reader of the last applied mode.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="fans"/> is null.</exception>
+    internal static Func<FanMode> TrackAppliedMode(FanController fans, FanMode saved)
+    {
+        ArgumentNullException.ThrowIfNull(fans);
+
+        var applied = saved;
+        fans.Applied += mode => applied = mode;
+        return () => applied;
+    }
+
     /// <summary>Builds the hotkey service over the real window and the real subscription.</summary>
     /// <remarks>
-    /// The mode is read from the settings rather than captured, so a press cycles from whatever
-    /// the app last applied. The settings object itself is the live one, so switching hotkeys off
-    /// in the Settings window takes effect on the next keypress - the only thing the
-    /// <see cref="HotkeySettings.Enabled"/> test above decides is whether the channels are opened
-    /// at all this run.
+    /// The mode is read through <paramref name="currentMode"/> rather than captured, so a press
+    /// cycles from whatever the app last applied - including a Turbo the watchdog forced and never
+    /// saved; see <see cref="TrackAppliedMode"/> for why that is not the same as the saved mode.
+    /// The settings object itself is the live one, so switching hotkeys off in the Settings window
+    /// takes effect on the next keypress - the only thing the <see cref="HotkeySettings.Enabled"/>
+    /// test above decides is whether the channels are opened at all this run.
     /// </remarks>
-    private static Hotkeys.HotkeyService BuildHotkeys(AppSettings settings, HotkeyTrace trace)
+    /// <param name="settings">The owner's live settings.</param>
+    /// <param name="trace">The shared record of what the channels deliver.</param>
+    /// <param name="currentMode">What the fans are actually running.</param>
+    private static Hotkeys.HotkeyService BuildHotkeys(
+        AppSettings settings, HotkeyTrace trace, Func<FanMode> currentMode)
     {
         // Captured on the thread Create runs on, which is the one OnStartup runs on and the one
         // the window will live on. Both channels deliver on some other thread - the message
@@ -104,7 +153,7 @@ public sealed class AppServices
             new Hotkeys.RawInputWindow(trace),
             new Hotkeys.WmiEventListener(trace),
             settings.Hotkeys,
-            () => settings.Mode,
+            currentMode,
             post: work =>
             {
                 // A key pressed while the app is closing has nowhere to land, and a dispatcher

@@ -26,6 +26,18 @@ public interface IHotkeySource : IDisposable
 
     /// <summary>Opens the channel. Safe to call once; a second call does nothing.</summary>
     void Start();
+
+    /// <summary>Whether the channel is open. False before <see cref="Start"/>, and after a
+    /// <see cref="Start"/> that could not open it.</summary>
+    /// <remarks>On this seam rather than on the implementation alone because a channel that
+    /// failed to open is something the owner has to be told about, and the wiring that would tell
+    /// them only ever sees the interface.</remarks>
+    bool IsListening { get; }
+
+    /// <summary>Why the channel could not be opened, or null if nothing has gone wrong.</summary>
+    /// <remarks>Set once, by <see cref="Start"/>, so a channel that misbehaves per message cannot
+    /// turn into a notice per message.</remarks>
+    string? StartError { get; }
 }
 
 /// <summary>
@@ -43,4 +55,11 @@ public interface IWmiEventSource : IDisposable
 
     /// <summary>Opens the subscription. Safe to call once; a second call does nothing.</summary>
     void Start();
+
+    /// <summary>Whether the subscription is running.</summary>
+    bool IsListening { get; }
+
+    /// <summary>Why the subscription could not be created, or null if nothing has gone wrong.
+    /// Set once, by <see cref="Start"/>.</summary>
+    string? StartError { get; }
 }

@@ -9,6 +9,7 @@ using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Lighting;
 using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Sensors;
+using OpenAorus.Hardware.Ui;
 
 namespace OpenAorus.Hardware.Tests;
 
@@ -257,6 +258,90 @@ public class MainViewModelHotkeyTests : IDisposable
         // Gaming, because the settings the service reads start on Normal.
         Assert.Equal(new[] { FanMode.Gaming }, rig.Applied);
         Assert.Equal(FanMode.Gaming, rig.Vm.SelectedMode);
+    }
+
+    // ---- The card follows the press, and only a press that was taken ------------------
+
+    [Fact]
+    public async Task A_press_that_applies_is_the_one_the_card_reports()
+    {
+        var rig = Build();
+
+        await rig.Vm.OnHotkeyAsync(Cycle(FanMode.Gaming, overlay: true));
+
+        Assert.Equal(new[] { FanMode.Gaming }, rig.Applied);
+        Assert.Equal(new[] { "Fan mode: Gaming" }, rig.Overlays);
+    }
+
+    [Fact]
+    public async Task The_card_is_up_before_the_writes_are_finished()
+    {
+        // A real apply is five to seven WMI writes paced at FanController.StepDelayMs, so drawing
+        // after it would put the card two to three seconds behind the key. This is being judged
+        // against the volume card Windows draws instantly; a late OSD is not an OSD.
+        var gate = new TaskCompletionSource();
+        var rig = Build(fanDelay: _ => gate.Task);
+
+        var press = rig.Vm.OnHotkeyAsync(Cycle(FanMode.Gaming, overlay: true));
+
+        Assert.False(press.IsCompleted);                            // still mid-sequence ...
+        Assert.Equal(new[] { "Fan mode: Gaming" }, rig.Overlays);    // ... and the card is already up
+
+        gate.SetResult();
+        await press;
+    }
+
+    [Fact]
+    public async Task A_press_dropped_mid_apply_draws_nothing()
+    {
+        var gate = new TaskCompletionSource();
+        var rig = Build(fanDelay: _ => gate.Task);
+
+        var first = rig.Vm.OnHotkeyAsync(Cycle(FanMode.Normal, overlay: true));
+        var second = rig.Vm.OnHotkeyAsync(Cycle(FanMode.Gaming, overlay: true));
+
+        gate.SetResult();
+        await first;
+        await second;
+
+        // The second press changed nothing - the busy guard dropped it - so a card reading
+        // "Fan mode: Gaming" would narrate a change the machine never made. Worse on a held key:
+        // the saved mode only moves on success, so every dropped press names the same target and
+        // the owner watches the card promise Gaming over and over while the fans stay on Normal.
+        Assert.Equal(new[] { FanMode.Normal }, rig.Applied);
+        Assert.Equal(new[] { "Fan mode: Normal" }, rig.Overlays);
+    }
+
+    [Fact]
+    public async Task A_press_on_a_read_only_model_draws_nothing()
+    {
+        var rig = Build(model: ModelProfile.Detect("Some Other Laptop"));
+
+        await rig.Vm.OnHotkeyAsync(Cycle(FanMode.Turbo, overlay: true));
+
+        // Nothing was written and nothing ever will be on this model. The banner already says it
+        // is unrecognised and read-only; a card claiming Turbo would be the app contradicting its
+        // own banner once per keypress.
+        Assert.Empty(rig.Wmi.Calls);
+        Assert.Empty(rig.Overlays);
+    }
+
+    [Fact]
+    public async Task A_write_that_fails_after_an_accepted_press_is_the_banner_to_report()
+    {
+        var rig = Build();
+        rig.Wmi.FailOn.Add("SetCurrentFanStep");   // the first step of every sequence
+
+        await rig.Vm.OnHotkeyAsync(Cycle(FanMode.Gaming, overlay: true));
+
+        // The press was taken, so the card went up with it - the failure arrives seconds later and
+        // is not something an OSD can wait for. What must not happen is the guard swallowing it:
+        // the banner and the status line say so, exactly as they do for a mode click that fails.
+        Assert.Equal(new[] { "Fan mode: Gaming" }, rig.Overlays);
+        Assert.NotEqual(FanMode.Gaming, rig.Vm.SelectedMode);
+        Assert.Equal(BannerKind.Error, rig.Vm.Banner);
+        Assert.Contains("SetCurrentFanStep", rig.Vm.BannerText);
+        Assert.Equal("Gaming failed", rig.Vm.StatusLine);
     }
 
     [Fact]

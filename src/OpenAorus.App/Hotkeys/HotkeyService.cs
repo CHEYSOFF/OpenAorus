@@ -105,6 +105,33 @@ public sealed class HotkeyService : IDisposable
         _wmi.Start();
     }
 
+    /// <summary>Whether either channel is open. Only meaningful once <see cref="Start"/> has run.</summary>
+    /// <remarks>Either, not both: the two carry different keys and fail for unrelated reasons - a
+    /// chassis with no Gigabyte WMI provider is the common case rather than a fault - so half the
+    /// Fn row still arriving is the feature working, not a failure to announce.</remarks>
+    public bool IsListening => _raw.IsListening || _wmi.IsListening;
+
+    /// <summary>
+    /// Why nothing at all is being listened for, in the channels' own words, or null while either
+    /// channel is open.
+    /// </summary>
+    /// <remarks>
+    /// Both reasons, because either one alone would name half a failure the owner cannot act on.
+    /// Null before <see cref="Start"/> and null when neither channel said why: this is what a
+    /// notice is built from, and a notice with nothing in it is worse than none.
+    /// </remarks>
+    public string? StartError
+    {
+        get
+        {
+            if (IsListening) return null;
+            var reasons = new[] { _raw.StartError, _wmi.StartError }
+                .Where(r => !string.IsNullOrWhiteSpace(r))
+                .ToArray();
+            return reasons.Length == 0 ? null : string.Join(" ", reasons);
+        }
+    }
+
     private void OnReport(byte[] report) => Handle(RawInputDecoder.Decode(report));
 
     private void OnWmiEvent(int data) => Handle(WmiEventDecoder.Decode(data));
