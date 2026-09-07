@@ -48,7 +48,9 @@ public partial class MainWindow : Window
     private void ShowOverlay(string text) =>
         Dispatcher.Invoke(() =>
         {
-            _overlay ??= new OverlayWindow();
+            // The same trace both channels write to: a card that failed to become click-through
+            // belongs in the dump beside the reports that asked for it.
+            _overlay ??= new OverlayWindow(App.Services.HotkeyTrace);
             _overlay.ShowNotice(text, App.Services.Settings.Hotkeys.OverlaySeconds);
         });
 

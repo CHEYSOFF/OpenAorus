@@ -150,10 +150,14 @@ public sealed class WmiEventListener : IWmiEventSource
 
     /// <summary>Writes one event down and then hands it on, in that order.</summary>
     /// <remarks>
-    /// Public for the reason <see cref="RawInputWindow.Deliver"/> is: reaching it through a live
-    /// subscription needs an elevated process and a Gigabyte provider, and this is the whole of
-    /// what the callback does once it has the property bag. Walking the bag is what is left
-    /// unreachable, and VERIFY 7.1 is what confirms that half.
+    /// Internal, and visible to the tests, for the reason <see cref="RawInputWindow.Deliver"/> is:
+    /// reaching it through a live subscription needs an elevated process and a Gigabyte provider,
+    /// and this is the whole of what the callback does once it has the property bag. Walking the
+    /// bag is what is left unreachable, and VERIFY 7.1 is what confirms that half.
+    ///
+    /// The order is the contract, the same one the raw-input channel keeps: a value that arrived
+    /// has to be written down before anything downstream gets the chance to throw and turn it
+    /// into a fault line with no event behind it.
     ///
     /// Checked, not assumed: an absent property, a value of an unexpected type and a number that
     /// will not fit all land in the second branch, and none of them is something to hand on. What
@@ -164,7 +168,7 @@ public sealed class WmiEventListener : IWmiEventSource
     /// null when the event carried no such property.</param>
     /// <param name="propertyNames">The property names the event did carry.</param>
     /// <exception cref="ArgumentNullException"><paramref name="propertyNames"/> is null.</exception>
-    public void Deliver(object? data, IReadOnlyList<string> propertyNames)
+    internal void Deliver(object? data, IReadOnlyList<string> propertyNames)
     {
         ArgumentNullException.ThrowIfNull(propertyNames);
 

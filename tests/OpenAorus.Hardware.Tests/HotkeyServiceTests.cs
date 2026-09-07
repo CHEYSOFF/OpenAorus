@@ -36,7 +36,9 @@ public class HotkeyServiceTests
 
         public Rig()
         {
-            Service = new HotkeyService(Raw, Wmi, Settings, () => Mode, () => Now);
+            // Inline, said out loud. The hand-off is not optional, and a rig that runs the
+            // action on the arriving thread is making a choice rather than accepting a default.
+            Service = new HotkeyService(Raw, Wmi, Settings, () => Mode, post: w => w(), clock: () => Now);
             Service.ActionRequested += Actions.Add;
             Service.Start();
         }
@@ -240,6 +242,32 @@ public class HotkeyServiceTests
     // ---- The hand-off to the UI thread -----------------------------------------------
 
     [Fact]
+    public void The_hand_off_cannot_be_left_to_a_default()
+    {
+        // WHY THIS IS A TEST AND NOT A COMMENT. The seam below is well covered, but the wiring
+        // site is not reachable from here, and while `post` had a default, deleting it from
+        // AppServices.BuildHotkeys compiled, ran, and left every test in this project green - on
+        // an app where a WMI notice arrives on a thread-pool callback and ends at bound
+        // view-model properties. Making it required turns that deletion into a build failure at
+        // every call site at once; this pins that it stays required, because re-adding `= null`
+        // would be just as quiet as the deletion was.
+        var post = typeof(HotkeyService).GetConstructors().Single()
+            .GetParameters().Single(p => p.Name == "post");
+
+        Assert.False(post.IsOptional,
+            "post has a default again - a wiring site can now drop it without anything noticing");
+    }
+
+    [Fact]
+    public void A_null_hand_off_is_refused_rather_than_quietly_run_inline()
+    {
+        // The other half: required in the signature is worth little if null slips through and is
+        // silently replaced by an inline default.
+        Assert.Throws<ArgumentNullException>(() => new HotkeyService(
+            new FakeHotkeySource(), new FakeWmiEventSource(), AllOn(), () => FanMode.Quiet, null!));
+    }
+
+    [Fact]
     public void Every_action_goes_through_the_hand_off_the_owner_supplied()
     {
         // Raw input arrives on the message window's thread and WMI on a thread-pool callback, and
@@ -250,7 +278,7 @@ public class HotkeyServiceTests
         var raw = new FakeHotkeySource();
         var wmi = new FakeWmiEventSource();
         using var service = new HotkeyService(
-            raw, wmi, AllOn(), () => FanMode.Quiet, () => 0, post: posted.Add);
+            raw, wmi, AllOn(), () => FanMode.Quiet, post: posted.Add, clock: () => 0);
         service.ActionRequested += actions.Add;
         service.Start();
 
@@ -273,7 +301,7 @@ public class HotkeyServiceTests
         var actions = new List<HotkeyAction>();
         var raw = new FakeHotkeySource();
         var service = new HotkeyService(
-            raw, new FakeWmiEventSource(), AllOn(), () => FanMode.Quiet, () => 0, post: posted.Add);
+            raw, new FakeWmiEventSource(), AllOn(), () => FanMode.Quiet, post: posted.Add, clock: () => 0);
         service.ActionRequested += actions.Add;
         service.Start();
         raw.Emit(4, 0, 0, 39);
@@ -295,7 +323,7 @@ public class HotkeyServiceTests
 
     private static HotkeyService Wire(IHotkeySource raw, IWmiEventSource wmi, List<HotkeyAction> actions)
     {
-        var service = new HotkeyService(raw, wmi, AllOn(), () => FanMode.Quiet, () => 0);
+        var service = new HotkeyService(raw, wmi, AllOn(), () => FanMode.Quiet, post: w => w(), clock: () => 0);
         service.ActionRequested += actions.Add;
         return service;
     }
@@ -334,6 +362,44 @@ public class HotkeyServiceTests
         Assert.Equal(2, trace.EventCount);
         Assert.Single(actions);
         Assert.Contains("Data=1", trace.Render(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_report_is_written_down_before_a_subscriber_that_throws_can_lose_it()
+    {
+        // THE ORDER IS THE CONTRACT, and this is the case that makes it one. On the real path the
+        // subscriber chain ends at Dispatcher.InvokeAsync, which throws when the dispatcher is
+        // shutting down. Written down second, that throw is caught at the WM_INPUT boundary, filed
+        // as a fault, and the bytes are never recorded - so the dump says "nothing has arrived"
+        // about a report that did, which is the exact misreading the trace exists to prevent.
+        var trace = new HotkeyTrace();
+        var window = new RawInputWindow(trace);
+        window.ReportReceived += _ => throw new InvalidOperationException("the dispatcher refused it");
+
+        // Thrown on out of Deliver rather than swallowed here: the window procedure's catch is
+        // what handles it in the app, and this is below that.
+        Assert.Throws<InvalidOperationException>(
+            () => window.Deliver(new[] { new byte[] { 4, 0, 0, 39 } }));
+
+        Assert.Equal(1, trace.ReportCount);
+        Assert.Contains("04 00 00 27", trace.Render(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_event_is_written_down_before_a_subscriber_that_throws_can_lose_it()
+    {
+        // The same contract on the other channel, where it is worse: a WMI notice arrives on a
+        // thread-pool callback, so the post to the UI thread is never inline and the window in
+        // which the dispatcher can refuse it is the whole of the hand-off.
+        var trace = new HotkeyTrace();
+        var listener = new WmiEventListener(trace);
+        listener.EventReceived += _ => throw new InvalidOperationException("the dispatcher refused it");
+
+        Assert.Throws<InvalidOperationException>(
+            () => listener.Deliver(202, Array.Empty<string>()));
+
+        Assert.Equal(1, trace.EventCount);
+        Assert.Contains("Data=202", trace.Render(), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Reflection;
 using OpenAorus.Hardware.Config;
 using OpenAorus.Hardware.Fans;
 using OpenAorus.Hardware.Hotkeys;
@@ -26,7 +27,9 @@ public class HotkeyPolicyTests
     /// <summary>Every combination of the five switches an owner can throw, in a fixed order.</summary>
     /// <remarks>Five booleans is thirty-two settings files, which is small enough to walk
     /// exhaustively - and walking them is the only way to say "no setting can do this" rather
-    /// than "the settings I thought of cannot do this".</remarks>
+    /// than "the settings I thought of cannot do this". The five names and the bound are written
+    /// out by hand, so <see cref="The_walk_still_covers_every_switch_there_is"/> is what keeps
+    /// them honest as the settings grow.</remarks>
     private static IEnumerable<HotkeySettings> EverySettingsCombination()
     {
         for (var bits = 0; bits < 32; bits++)
@@ -40,6 +43,53 @@ public class HotkeyPolicyTests
                 OverlayForWifi = (bits & 16) != 0,
             };
         }
+    }
+
+    /// <summary>
+    /// The walk above still visits the whole space, and not half of it.
+    /// </summary>
+    /// <remarks>
+    /// The strongest guarantee in this release - "no settings file can make display brightness
+    /// draw" - rests on a hand-written list of five property names and a hand-written bound of
+    /// 32. A sixth boolean added to <see cref="HotkeySettings"/> would leave that walk compiling
+    /// and passing while covering half the settings files there are, with its own comment still
+    /// claiming otherwise. Nothing else in the project would say a word.
+    ///
+    /// So the shape is asserted rather than assumed. Adding a switch fails here, loudly, and the
+    /// failure names the walk that has to be extended: one more name in the list, one more bit,
+    /// and 32 becomes 64.
+    /// </remarks>
+    [Fact]
+    public void The_walk_still_covers_every_switch_there_is()
+    {
+        var switches = typeof(HotkeySettings)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.PropertyType == typeof(bool) && p.CanRead && p.CanWrite)
+            .Select(p => p.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            new[]
+            {
+                "Enabled",
+                "OverlayForBacklight",
+                "OverlayForFanMode",
+                "OverlayForTouchpad",
+                "OverlayForWifi",
+            },
+            switches);
+
+        // And the walk is sized to them rather than to the number that was true when it was
+        // written: 2^5 files, each one distinct.
+        var combinations = EverySettingsCombination().ToArray();
+        Assert.Equal(1 << switches.Length, combinations.Length);
+        Assert.Equal(
+            combinations.Length,
+            combinations
+                .Select(s => (s.Enabled, s.OverlayForFanMode, s.OverlayForBacklight, s.OverlayForTouchpad, s.OverlayForWifi))
+                .Distinct()
+                .Count());
     }
 
     [Theory]

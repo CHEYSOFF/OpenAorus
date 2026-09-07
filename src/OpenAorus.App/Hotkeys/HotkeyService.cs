@@ -59,28 +59,32 @@ public sealed class HotkeyService : IDisposable
     /// <param name="wmi">The WMI event channel.</param>
     /// <param name="settings">The owner's live hotkey settings.</param>
     /// <param name="currentMode">What the app believes the fans are running.</param>
+    /// <param name="post">How to get an action onto the thread that may act on it. REQUIRED, and
+    /// deliberately so: it used to default to running inline, and a default is exactly what let
+    /// the wiring site drop it without a single test noticing - after which a WMI notice, which
+    /// arrives on a thread-pool callback, would write bound view-model properties from the wrong
+    /// thread. Every caller now says which it wants, and a test passing <c>w =&gt; w()</c> is
+    /// saying plainly that it runs inline.</param>
     /// <param name="clock">A monotonic millisecond clock; defaults to
     /// <see cref="Environment.TickCount64"/>.</param>
     /// <param name="debouncer">Injectable so a test can shorten the window.</param>
-    /// <param name="post">How to get an action onto the thread that may act on it. Defaults to
-    /// running it inline, which is what a test wants and what a console caller would get; the app
-    /// passes the dispatcher, because a WMI notice arrives on a thread-pool callback and ends at a
-    /// view-model property and an overlay.</param>
     /// <exception cref="ArgumentNullException"><paramref name="raw"/>, <paramref name="wmi"/>,
-    /// <paramref name="settings"/> or <paramref name="currentMode"/> is null.</exception>
+    /// <paramref name="settings"/>, <paramref name="currentMode"/> or <paramref name="post"/> is
+    /// null.</exception>
     public HotkeyService(
         IHotkeySource raw,
         IWmiEventSource wmi,
         HotkeySettings settings,
         Func<FanMode> currentMode,
+        Action<Action> post,
         Func<long>? clock = null,
-        SignalDebouncer? debouncer = null,
-        Action<Action>? post = null)
+        SignalDebouncer? debouncer = null)
     {
         ArgumentNullException.ThrowIfNull(raw);
         ArgumentNullException.ThrowIfNull(wmi);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(currentMode);
+        ArgumentNullException.ThrowIfNull(post);
 
         _raw = raw;
         _wmi = wmi;
@@ -88,7 +92,7 @@ public sealed class HotkeyService : IDisposable
         _currentMode = currentMode;
         _clock = clock ?? (() => Environment.TickCount64);
         _debouncer = debouncer ?? new SignalDebouncer();
-        _post = post ?? (work => work());
+        _post = post;
 
         _raw.ReportReceived += OnReport;
         _wmi.EventReceived += OnWmiEvent;

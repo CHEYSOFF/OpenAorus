@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using OpenAorus.Hardware.Hotkeys;
 
 namespace OpenAorus.App.Views;
 
@@ -40,6 +41,12 @@ namespace OpenAorus.App.Views;
 /// that would matter - <c>WS_EX_NOACTIVATE</c> is what guarantees it. VERIFY 7.7 records which of
 /// the two this chassis does.
 /// </para>
+/// <para>
+/// What the three styles BUY needs a desktop. What the three styles ARE does not, and that is
+/// where the mistake would be: <c>0x20</c> written where <c>0x200</c> belongs is a card that
+/// steals focus and swallows clicks, on every machine, with nothing on fire.
+/// <see cref="WithOverlayStyles"/> holds that arithmetic on its own so a test can read it.
+/// </para>
 /// </remarks>
 public sealed partial class OverlayWindow : System.Windows.Window
 {
@@ -48,15 +55,39 @@ public sealed partial class OverlayWindow : System.Windows.Window
     private const int WsExNoActivate = 0x08000000;
     private const int WsExToolWindow = 0x00000080;
 
+    private const string StyleSite = "overlay window styles";
+
+    private readonly HotkeyTrace _trace;
     private readonly DispatcherTimer _hide;
 
-    public OverlayWindow()
+    /// <summary>Creates the one card, hidden and off screen.</summary>
+    /// <param name="trace">Where a refused style change is written down. Not optional, and for
+    /// the reason <see cref="Hotkeys.RawInputWindow"/>'s is not: the failure has no other symptom
+    /// the owner could report - the card simply starts taking focus and eating clicks - so the
+    /// dump is the only place it could ever be seen.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="trace"/> is null.</exception>
+    public OverlayWindow(HotkeyTrace trace)
     {
+        ArgumentNullException.ThrowIfNull(trace);
+        _trace = trace;
+
         InitializeComponent();
         _hide = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher);
         _hide.Tick += (_, _) => { _hide.Stop(); Hide(); };
         SourceInitialized += OnSourceInitialized;
     }
+
+    /// <summary>The extended style word this card must run under, given the one it already has.</summary>
+    /// <remarks>
+    /// Separated from the call so the composition is checkable without a desktop. Existing bits
+    /// are kept: WPF has already put its own on the HWND by the time
+    /// <see cref="OnSourceInitialized"/> runs - <c>WS_EX_WINDOWEDGE</c> and whatever
+    /// <c>AllowsTransparency</c> brought - and assigning instead of OR-ing would drop them.
+    /// </remarks>
+    /// <param name="existing">The window's current <c>GWL_EXSTYLE</c>.</param>
+    /// <returns><paramref name="existing"/> with the three styles added.</returns>
+    internal static int WithOverlayStyles(int existing) =>
+        existing | WsExTransparent | WsExNoActivate | WsExToolWindow;
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
@@ -64,7 +95,18 @@ public sealed partial class OverlayWindow : System.Windows.Window
         // the card is ever on screen - there is no first press that behaves differently.
         var hwnd = new WindowInteropHelper(this).Handle;
         var style = GetWindowLong(hwnd, GwlExStyle);
-        SetWindowLong(hwnd, GwlExStyle, style | WsExTransparent | WsExNoActivate | WsExToolWindow);
+
+        // SetWindowLong answers with the PREVIOUS style word, and zero means either "the previous
+        // word was zero" or "it failed" - so the last error has to be cleared first and read
+        // immediately after, the same way the raw-input registration reads its own. Not worth
+        // acting on beyond writing it down: there is nothing to retry, and a card that failed to
+        // become click-through is still a card. But it is worth writing down, because the only
+        // other evidence of it is an owner reporting that typing stopped working.
+        Marshal.SetLastSystemError(0);
+        var previous = SetWindowLong(hwnd, GwlExStyle, WithOverlayStyles(style));
+        var error = Marshal.GetLastWin32Error();
+        if (previous == 0 && error != 0)
+            _trace.RecordFault(StyleSite, $"Win32 error {error}");
     }
 
     /// <summary>Shows <paramref name="text"/> for <paramref name="seconds"/>, then hides.</summary>

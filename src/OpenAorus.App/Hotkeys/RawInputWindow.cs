@@ -342,20 +342,24 @@ public sealed class RawInputWindow : IHotkeySource
 
     /// <summary>Writes each report down and then hands it on, in that order.</summary>
     /// <remarks>
-    /// Public for the same reason <see cref="ViewModels.MainViewModel.OnSensorPollAsync"/> is: it
-    /// is the whole of what the window procedure does once it has bytes, and everything above it -
-    /// the decoder, the debounce, the policy, the fan write - is only worth anything if it can be
-    /// driven a report at a time in a test. The packet walk above cannot be, and does not need to
-    /// be twice.
+    /// Internal, and visible to the tests through the <c>InternalsVisibleTo</c> at the top of this
+    /// file, for the same reason <see cref="Devices"/> is: it is the whole of what the window
+    /// procedure does once it has bytes, and everything above it - the decoder, the debounce, the
+    /// policy, the fan write - is only worth anything if it can be driven a report at a time in a
+    /// test. The packet walk above cannot be, and does not need to be twice. Nothing outside this
+    /// class calls it in the app, and a window that receives from the OS has no business taking
+    /// injected reports on its public surface.
     ///
     /// The order is the contract. The trace is what separates "nothing arrived" from "reports
     /// arrived and nothing happened", so a report has to be written down before anyone decides it
     /// means nothing - including a subscriber that throws, whose exception the WM_INPUT boundary
-    /// catches after the line is already in the ring.
+    /// catches after the line is already in the ring. Inverted, a dispatcher that refuses the work
+    /// during shutdown files a fault and loses the bytes, and the dump then reads exactly like a
+    /// chassis that sent nothing - which is the one reading this trace exists to rule out.
     /// </remarks>
     /// <param name="reports">The reports one packet held, in arrival order.</param>
     /// <exception cref="ArgumentNullException"><paramref name="reports"/> is null.</exception>
-    public void Deliver(IReadOnlyList<byte[]> reports)
+    internal void Deliver(IReadOnlyList<byte[]> reports)
     {
         ArgumentNullException.ThrowIfNull(reports);
 

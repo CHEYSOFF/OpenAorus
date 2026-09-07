@@ -60,7 +60,8 @@ public class MainViewModelHotkeyChannelTests : IDisposable
             KeyboardPresent = false,
             Version = "0.0.0",
             ExePath = "OpenAorus.Tests.exe",
-            Hotkeys = new HotkeyService(raw, wmiEvents, settings.Hotkeys, () => settings.Mode, () => 0),
+            Hotkeys = new HotkeyService(
+                raw, wmiEvents, settings.Hotkeys, () => settings.Mode, post: w => w(), clock: () => 0),
         });
     }
 

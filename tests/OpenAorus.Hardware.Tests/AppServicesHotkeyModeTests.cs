@@ -90,7 +90,8 @@ public class AppServicesHotkeyModeTests : IDisposable
         // The whole path a real press takes, over the cursor the app hands the service.
         var raw = new FakeHotkeySource();
         using var hotkeys = new HotkeyService(
-            raw, new FakeWmiEventSource(), settings.Hotkeys, cursor, () => 0);
+            raw, new FakeWmiEventSource(), settings.Hotkeys, cursor,
+            post: w => w(), clock: () => 0);
         var running = new List<Task>();
         hotkeys.ActionRequested += a => running.Add(vm.OnHotkeyAsync(a));
         hotkeys.Start();

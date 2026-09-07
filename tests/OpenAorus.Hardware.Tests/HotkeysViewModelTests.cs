@@ -55,7 +55,7 @@ public class HotkeysViewModelTests : IDisposable
             ExePath = "OpenAorus.Tests.exe",
             Hotkeys = listening
                 ? new HotkeyService(new FakeHotkeySource(), new FakeWmiEventSource(), settings.Hotkeys,
-                    () => FanMode.Normal)
+                    () => FanMode.Normal, post: w => w())
                 : null,
         };
     }

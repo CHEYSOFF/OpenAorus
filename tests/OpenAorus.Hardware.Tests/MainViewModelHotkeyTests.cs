@@ -231,7 +231,8 @@ public class MainViewModelHotkeyTests : IDisposable
         var raw = new FakeHotkeySource();
         var now = 0L;
         using var hotkeys = new HotkeyService(
-            raw, new FakeWmiEventSource(), rig.Services.Settings.Hotkeys, () => rig.Services.Settings.Mode, () => now);
+            raw, new FakeWmiEventSource(), rig.Services.Settings.Hotkeys, () => rig.Services.Settings.Mode,
+            post: w => w(), clock: () => now);
 
         // Collected rather than dropped, only so the test can wait for them; the app drops them
         // for the same reason the sensor poller does - the raw-input hook has nowhere to await.
@@ -350,7 +351,8 @@ public class MainViewModelHotkeyTests : IDisposable
         var rig = Build();
         var events = new FakeWmiEventSource();
         using var hotkeys = new HotkeyService(
-            new FakeHotkeySource(), events, rig.Services.Settings.Hotkeys, () => rig.Services.Settings.Mode, () => 0);
+            new FakeHotkeySource(), events, rig.Services.Settings.Hotkeys, () => rig.Services.Settings.Mode,
+            post: w => w(), clock: () => 0);
 
         rig.Services.Settings.Hotkeys.OverlayForTouchpad = true;
         var running = new List<Task>();
