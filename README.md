@@ -4,9 +4,9 @@ Open-source, single-executable replacement for the fan, sensor, battery and
 keyboard-lighting features of Gigabyte Control Center on Gigabyte AORUS / AERO
 laptops. Think [G-Helper](https://github.com/seerge/g-helper), but for Gigabyte.
 
-**Status: pre-alpha, v0.2. Nothing here is verified on real hardware, neither the
-fan control from v0.1 nor the lighting added in v0.2. See
-[Verification status](#verification-status) below.**
+**Status: pre-alpha, v0.3. Nothing here is verified on real hardware: not the fan
+control from v0.1, not the lighting added in v0.2, and not the Fn hotkeys added in
+v0.3. See [Verification status](#verification-status) below.**
 
 ## Why
 
@@ -60,20 +60,75 @@ keyboard, which is what the v0.1 takeover switch is for.
 If no supported keyboard is found, the Lighting section is not shown and
 nothing else about the app changes.
 
-Still missing: Fn hotkeys, per-app profiles, power limits, and the chassis
-light bar and logo LED.
+## Fn hotkeys and the overlay (v0.3)
+
+The Fn row keeps working without Gigabyte's shortcut and OSD processes running,
+and stops producing the second on-screen display that started this project:
+
+- The fan-mode key cycles Quiet, Normal, Gaming, Turbo through the same
+  controller the buttons use, so the window, the tray tooltip and the saved
+  settings all stay in step with it
+- The keyboard backlight key is handled by the keyboard's own firmware;
+  OpenAorus reads the level it reports and moves the lighting panel's
+  brightness slider to match, so the app agrees with the keyboard instead of
+  arguing with it. Nothing is written back to the keyboard
+- The touchpad and Wi-Fi keys are reported. The firmware has already done the
+  toggle by the time the app hears about it, so there is nothing to do but say so
+- Volume and display brightness are decoded and then deliberately ignored.
+  **OpenAorus never draws an overlay for either, because Windows already draws
+  one**, and a second card on top of the first is the whole reason this release
+  exists. There is no setting for it, and adding one would be a mistake rather
+  than a feature
+
+The overlay itself is **off by default**, and opt-in per signal: fan mode,
+keyboard backlight, touchpad and Wi-Fi each have their own switch in Settings,
+plus how long the card stays up. With all four off, which is what ships, nothing
+is ever drawn and the fan and backlight keys still work. The whole Fn row can
+also be switched off in one place, and that stops the app listening at all.
+
+Two channels carry this, and they need different things. Raw input on three of
+the keyboard's vendor collections **needs no administrator rights**; the
+`GB_WMIACPI_Event` subscription that carries the touchpad and Wi-Fi notices does,
+which the app already has for the fans. The three collections are all vendor
+ones: OpenAorus never registers the standard keyboard, mouse or consumer-control
+pages, so it never sees ordinary typing, and it could not draw over the Windows
+volume overlay even if someone asked it to, because the volume keys are never
+delivered to it in the first place.
+
+None of this has been seen working on a real machine. Every byte pattern and
+every event value came out of Gigabyte's own binaries, and it is entirely
+possible that this chassis emits nothing at all on these channels and that the
+whole feature does nothing. Because "nothing happened" is also what a misread
+report looks like, the app writes down every report it receives, by its bytes,
+before anything decodes it, along with anything it could not read and why. That
+record is in the diagnostics file the **Diagnostics** button in the window footer
+writes. If the Fn row does nothing on your machine, that file is what says
+whether anything arrived; section 7 of [`VERIFY.md`](VERIFY.md) walks through
+reading it, and reports from any model are welcome.
+
+Still missing: per-app profiles, power limits, and the chassis light bar and
+logo LED.
 
 ## Verification status
 
 v0.1 was built on a machine that cannot elevate and has no Gigabyte hardware
-attached, and v0.2 was built on the same machine, with no keyboard of the
-supported family present either. So **nothing here has been confirmed against a
-real embedded controller or a real keyboard**: not the fan modes, not the
+attached, and v0.2 and v0.3 were built on the same machine, with no keyboard of
+the supported family present either. So **nothing here has been confirmed against
+a real embedded controller or a real keyboard**: not the fan modes, not the
 custom curve, not the battery charge limit, not autostart, not sleep/resume
-behaviour, and not one pixel of the lighting. Everything is implemented against
-protocols reverse-engineered from Gigabyte Control Center and covered by unit
-tests against a fake WMI layer and a fake HID device, which is not the same
-thing as a fan spinning up or a key lighting on a real laptop.
+behaviour, not one pixel of the lighting, and not a single Fn keypress.
+Everything is implemented against protocols reverse-engineered from Gigabyte
+Control Center and covered by unit tests against a fake WMI layer and a fake HID
+device, which is not the same thing as a fan spinning up or a key lighting on a
+real laptop.
+
+The hotkeys are the least confirmed part of it. Neither channel has ever been
+opened on a Gigabyte machine, so unlike the fan and lighting work, where the
+question is whether the recovered protocol is right, here the prior question is
+whether this chassis says anything on those channels at all. It could ship and
+do nothing without a single test noticing, which is why section 7 of
+[`VERIFY.md`](VERIFY.md) starts by reading the diagnostics file rather than by
+pressing a key.
 
 [`VERIFY.md`](VERIFY.md) lists every check that still needs to happen on
 actual hardware before this should be considered trustworthy. If you run any
@@ -195,10 +250,13 @@ than quietly putting it back.
 
 ## Docs
 
-- [v0.1 design](docs/superpowers/specs/2026-09-06-openaorus-v0.1-design.md) and
+- [v0.1 design](docs/superpowers/specs/2026-09-06-openaorus-v0.1-design.md),
   [v0.2 keyboard RGB design](docs/superpowers/specs/2026-09-06-openaorus-v0.2-rgb-design.md)
+  and [v0.3 Fn hotkeys and the OSD problem](docs/superpowers/specs/2026-09-06-openaorus-v0.3-fn-osd-design.md)
 - [Research notes](docs/research/2026-09-05-research-notes.md) and the full
   [WMI method table](docs/research/gb-wmiacpi-methods-aorus-17g-kd.txt)
+- [Fn hotkey and OSD research](docs/research/fn-hotkey-signals.md), with the two
+  event channels and the three questions it could not answer
 - [Keyboard protocol notes](docs/research/ione-keyboard-protocol.md), with the
   two recovered slot maps
   ([ENG-US](docs/research/ione-keymap-eng-us.txt),

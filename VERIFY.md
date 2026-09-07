@@ -6,9 +6,10 @@ but **no fan, sensor, battery or lighting behaviour has been confirmed on real h
 yet**. The build environment cannot elevate and has no keyboard of the supported family
 attached.
 
-Every step below needs administrator rights on the laptop itself, except section 5: the
-keyboard is a plain HID device and its protocol needs none. The app relaunches itself
-elevated at startup regardless, for the fan side, so the UAC prompt appears either way.
+Every step below needs administrator rights on the laptop itself, except section 5 and
+the raw-input half of section 7: the keyboard is a plain HID device and its protocol
+needs none, and raw input needs none either. The app relaunches itself elevated at
+startup regardless, for the fan side, so the UAC prompt appears either way.
 
 Work through this list on an AORUS 17G KD (or any Gigabyte laptop) and record what you
 see. Anything that disagrees with the expected result is a bug, not a surprise.
@@ -259,6 +260,317 @@ evidence either of those two fixes will ever get.**
 
 - [ ] Sleep the laptop, wake it, and confirm the status line reads
       `Re-applied <mode> after resume`
+
+## 7. Fn hotkeys and the overlay
+
+Nothing in this section has ever been observed on hardware. Both hotkey channels were
+recovered from Gigabyte's software rather than seen on this chassis, so it is entirely
+possible that neither one opens and that v0.3 does nothing at all here. That is a
+finding, not a failure. Record it.
+
+Work through 7.1 before anything else, and do not skip it because pressing a key is
+quicker. Three unrelated failures look identical from the keyboard: a chassis that emits
+nothing on these collections, a report that arrives and is misread by one byte, and a
+packet that arrives and cannot be walked at all. In all three you press an Fn key and
+nothing happens. The app now writes down what arrived before anything decodes it, so one
+line of the diagnostics dump separates the three, and every step after this one is
+interpretable only once you know which of them you are looking at.
+
+### 7.1 Read the dump first: which channels opened at all
+
+The channels are opened by the running window, not by the command line. `--dump` and
+`--apply` exit before a window exists, so a `--dump` run always reports that nothing has
+arrived, whatever the keyboard did. Use the running app:
+
+- [ ] Start OpenAorus with the window open and check Settings first: **Respond to the Fn
+      row** must be ticked. It is on by default, and with it off no channel is opened at
+      all, which reads in the dump exactly like a chassis that emits nothing
+- [ ] Press, in this order: the fan-mode key three or four times, the backlight key
+      through all its steps, the touchpad key, the Wi-Fi key, volume up and down, and
+      display brightness up and down
+- [ ] Click **Diagnostics** in the footer of the window. The status line names the file
+      it wrote, in the same folder as `settings.json`
+- [ ] Near the top of that file, under the model and OS lines, is a block beginning
+      `Hotkey channels:` with five counts, followed by up to 32 recorded lines. Read it
+      before reading anything else
+
+What the counts mean, and they are the whole point of this step:
+
+- [ ] **All five counts zero and the line `nothing has arrived`.** Nothing reached the
+      app. With the Fn row confirmed on above, the finding is that this chassis emits
+      nothing on the three vendor collections and raises no `GB_WMIACPI_Event`. Stop
+      here and record it. Nothing else in this section is worth attempting, and the
+      conclusion is that this model needs a different approach rather than a different
+      constant
+- [ ] **`reports=` non-zero, with lines like `#3 report 4 bytes: 04 01 19 00`, and yet
+      no key did anything.** The raw-input channel is open and the decoding is wrong.
+      This is the case the whole trace exists to expose, and 7.2 is where it is settled:
+      compare the hex against the tables in `docs/research/fn-hotkey-signals.md`
+- [ ] **`unreadable-packets=` non-zero.** A `WM_INPUT` message arrived and no report
+      could be read out of it. The line names which of four places it was given up on,
+      and they have unrelated fixes, so read the cause and not the length:
+      `size query failed` (the OS would not say how big the packet is),
+      `over cap` (larger than the 4096 bytes this window will allocate for),
+      `copy short` (the OS agreed a size and then did not fill it, which is a P/Invoke
+      shaped problem and has nothing to do with the report tables), and
+      `walk rejected` (the packet arrived whole and the walk found nothing in it, which
+      is what a wrong x64 header offset looks like). One exception worth knowing:
+      `walk rejected` on a packet of exactly 36 bytes is evidence the header offset is
+      *right*, because 36 is a 24-byte header plus the two length fields plus one 4-byte
+      report, so look at the copy path instead
+- [ ] **`WMI event: Data=202` and friends.** The WMI subscription is open and its `Data`
+      property is named and typed what the research says. That is one of the two
+      assumptions this release rests on, confirmed in one line
+- [ ] **`WMI event without a readable Data: ...`.** The subscription is open, an event
+      arrived, and the value was not where it was expected. The line lists the property
+      names that did arrive. Copy them down verbatim: they are the entire answer to a
+      subscription that runs forever and reports nothing, and nothing else in the app
+      will ever produce them
+- [ ] **`events=0` with no fault.** The subscription is running and the provider has
+      raised nothing. Press the touchpad and Wi-Fi keys again before concluding it
+- [ ] **`faults=` non-zero.** A channel failed. `fault in raw-input registration:
+      Win32 error <n>` means the collections were refused, `fault in raw-input window
+      creation` means the message-only window was never made, and `fault in WMI event
+      subscription` means the provider refused the subscription, usually for want of
+      elevation. Nothing in the app shows a banner or a status line for any of these, so
+      this line is the only place a dead channel ever says so
+
+Two things about how the block is written, so it is not misread. Repeats of one shape
+are recorded once and only counted after that: one line per fault site, one per packet
+length and cause, one per set of event property names. So a count climbing with no new
+line is the channel still misbehaving in the same way, not the trace losing entries.
+Reports are the exception and every one is written, into a ring of 32; if the block says
+`(n earlier entries dropped)` the keyboard is talking faster than the ring holds, which
+is the channel working.
+
+### 7.2 Press every Fn combination and write down which do nothing
+
+- [ ] Go along the whole Fn row and note, for each key, whether OpenAorus reacted. Then
+      export the dump again and read the recorded reports against what you pressed
+- [ ] **Every key dead, with reports listed in the dump**, means one wrong assumption,
+      and it is almost certainly the byte indexing: the decoder reads the research's
+      `bRawData1` as `report[0]`, and the other reading shifts every pattern by one byte.
+      Under that reading every documented pattern fails and every Fn key does nothing
+- [ ] The dump prints reports in hex and the research tables are written in decimal, so
+      compare them through this: `4` is `04`, `9` is `09`, `0` is `00`, `1` is `01`,
+      `3` is `03`, `23` is `17`, `25` is `19`, `37` is `25`, `38` is `26`, `39` is `27`,
+      `50` is `32`, `137` is `89`, `138` is `8A`, `139` is `8B`
+- [ ] So, under the reading the app uses: a backlight press reads `04 01 00 ..`,
+      `04 01 19 ..` or `04 01 32 ..`; a fan press is a 4-byte report whose **last** byte
+      is `25`, `26` or `27`; Gigabyte's three launcher codes read `04 00 00 89`, `8A` and
+      `8B`; and the 9-byte display-brightness report begins `09` and carries `01 03` in
+      its third and fourth bytes. A dump full of reports that match none of these shapes,
+      but would match them shifted along by one byte, is the answer to this whole section
+- [ ] **Most keys working and two dead** is a research gap, not an indexing error.
+      Record which two
+- [ ] Note in particular whether the Fn key alone is visible, or only the combinations.
+      The research could not say
+- [ ] The app registers three vendor collections and never the standard keyboard page. If
+      a key produces no report at all here while the rest of the row does, the signal may
+      be one that only arrives on the keyboard page, and this step is the only thing that
+      would show it
+
+### 7.3 The bug this release exists to fix
+
+- [ ] With **every** overlay switched on in Settings, press volume up, volume down and
+      mute. Exactly one overlay must appear, Windows' own, and the volume must actually
+      change
+- [ ] Repeat with Gigabyte Control Center taken over
+- [ ] Do the same with the display-brightness keys. Again: exactly one overlay, Windows'
+      own
+- [ ] **This is the acceptance test for the whole release.** Everything else in this
+      section is a feature; a second card on either of those is the bug v0.3 exists to
+      remove, reintroduced
+- [ ] The two suppressions are not the same kind of thing, so a failure means different
+      things. Volume is structural: its keys live on the consumer-control collection,
+      which this app never registers, so a second volume card would mean something has
+      started registering that page. Display brightness does arrive, on
+      `0xFF00/0xFF00`, and is refused in `HotkeyPolicy`, so a second brightness card
+      would mean that refusal has gone. Say which one you saw
+
+### 7.4 One keypress, one action
+
+The de-duplication window is 250 ms. It was chosen, not measured, and this step is the
+measurement.
+
+- [ ] Press the fan-mode key five times, waiting each time for the mode to change before
+      pressing again: five mode changes, not ten and not two. Applying one automatic mode
+      is five WMI writes and Turbo is seven, paced 500 ms apart, so a single change takes
+      about two seconds and Turbo about three, and five presses walked round the ring
+      take something on the order of ten to fifteen seconds to settle. What is being
+      counted is the changes, not the speed. A slow result is the pacing, not a bug
+- [ ] Now press it five times as fast as you can. **Fewer than five changes is expected
+      here and is not the de-duplication.** A press that lands while an apply is still
+      running is dropped rather than queued, deliberately: queued, a burst would leave
+      the machine working through presses nobody is still making. What must not happen is
+      *more* changes than presses
+- [ ] Hold the fan-mode key down. There is no key-up on these collections, so the window
+      throttles rather than latches: a hold fires at most once per window and each of
+      those that lands mid-apply is dropped. The mode should walk slowly and stop when
+      you let go, not carry on changing afterwards
+- [ ] More changes than presses means the window is too short. A deliberate double tap,
+      slow enough to be two presses, that produces one change means it is too long
+
+### 7.5 Whether the firmware runs its own fan rotation underneath
+
+- [ ] Note the mode OpenAorus shows, press the fan key once, and note it again. Then
+      press it three more times and check the app has walked Quiet, Normal, Gaming, Turbo
+      in order. From Fixed or Custom the first press lands on Normal by design
+- [ ] Watch the machine rather than the app for one of these presses. If the fans audibly
+      do something the app did not ask for, or the app's mode and the machine's behaviour
+      diverge, the firmware is running its own rotation underneath and the app should
+      honour the mode each wire code names instead of cycling
+- [ ] The dump makes the same question answerable directly. If every press records the
+      same code, the firmware is naming one fixed thing and cycling is right. If the code
+      walks `25`, `26`, `27` from press to press, the firmware is rotating its own three
+      modes and honouring the named mode would track it instead of drifting out of step
+- [ ] `HotkeyPolicy.NamedMode` already holds that table, tested and unused, and switching
+      to it is one line in `HotkeyPolicy.Service`
+- [ ] This is the one observation in this section that could change a design decision
+      rather than a constant
+
+### 7.6 The keyboard backlight
+
+- [ ] Cycle the backlight key through all its steps and check the lighting panel's
+      brightness slider follows: 0 %, 50 %, 100 %. The app writes nothing back to the
+      keyboard here; the firmware has already changed the lighting, and the app only
+      moves the slider to agree and saves it
+- [ ] A step the slider does not follow means this keyboard has more than the three
+      levels the research documents. Record the report the dump shows for that step: its
+      third byte is the level on the wire, and only `00`, `19` and `32` are understood.
+      The app deliberately refuses to guess a scale rather than inventing one, so a
+      fourth step is reported as not understood instead of as a plausible wrong number
+- [ ] One odd consequence to expect if that happens, because it does not look like a
+      backlight problem: a 4-byte report beginning `04 01` is treated as a backlight
+      report whatever its last byte, so on a keyboard with an undocumented level the
+      **fan** key can look like it works only sometimes
+
+### 7.7 The overlay behaves like a notification, not a window
+
+The three extended window styles that buy this are applied to the real window handle when
+the card is first created. Nothing in the test suite can observe whether they work: the
+tests pin only that the markup declarations behind them are still present, so everything
+below is the first evidence there is.
+
+- [ ] Press a serviced key while typing in another program: the overlay appears, the
+      caret stays put, and nothing typed is lost
+- [ ] Click where the overlay is drawn while it is up: the click reaches what is behind it
+- [ ] Alt-Tab while a card is on screen: the card is not in the list
+- [ ] Press a serviced key twice in quick succession with its overlay on: the words
+      change inside one card. A second card must never stack on the first
+- [ ] Press a serviced key while a full-screen game is running: the overlay appears over
+      it or not at all, depending on how the game presents, and both are acceptable. What
+      must not happen is the game losing focus or minimising. This case is untested by
+      anything
+
+### 7.8 Placement
+
+- [ ] On a single monitor, the card centres at the bottom of the screen
+- [ ] With a second monitor attached, it centres at the bottom of the screen the **mouse**
+      is on. Not the focused window and not the primary monitor: a hotkey can fire with
+      nothing focused at all, and the pointer is the only thing that always names a screen
+- [ ] With the two monitors at **different** scaling factors, check it again on each. This
+      is the one placement case that could not be reasoned out without hardware, and it is
+      approximate by construction: the screen's bounds are taken from the monitor the
+      pointer is on, but the scale used to convert them comes from the window's own
+      source, which is whichever screen the card was last shown on. Expect the first
+      appearance on the other monitor to be the one that can land off centre, and a second
+      press on that same monitor to be right. Record whether that is what happens
+
+### 7.9 It must never react to anything that is not an Fn key
+
+- [ ] Type normally in another program for a minute with every overlay switched on. If
+      OpenAorus reacts to anything at all, **stop and report it**
+- [ ] It should be impossible: the app registers three vendor collections and never the
+      standard keyboard, mouse or consumer-control pages, so ordinary typing is never
+      delivered to it in the first place. A reaction would mean either a decoder matching
+      far too loosely or a registration that is not the one in `RawInputWindow.Usages`,
+      and it is the one failure in this section worth stopping the session for
+- [ ] The same dump reads on this: a stream of recorded reports while you are only typing
+      is the tell, whether or not anything visible happened
+
+### 7.10 The questions the research could not answer
+
+- [ ] Is the Fn key itself observable, or only the resulting combinations? (7.2)
+- [ ] Does this chassis emit the fan codes 37, 38 and 39 at all? (7.1)
+- [ ] What is the 9-byte **output** report on collection `0xFF00/0xFF00` for? Gigabyte
+      writes to it and the decompiled path does not explain it. OpenAorus never writes to
+      it. If something about the keyboard behaves differently under GCC than under
+      OpenAorus, this is the first place to look
+
+### Assumptions this section is really testing
+
+- **That either hotkey channel exists on this chassis.** Both were recovered from
+  Gigabyte's software and neither has been observed here. v0.3 could ship and do nothing
+  at all without a single test noticing; 7.1 is the only thing that would say so.
+
+- **That `bRawData1..4` means indices 0..3.** The 4-byte and 9-byte report tables only
+  agree with each other under that reading, but it is a reading of decompiled field
+  names. If it is wrong, every pattern shifts by one byte and every Fn key does nothing,
+  which is exactly what 7.2 asks you to look for, and why the reports are written down by
+  their bytes before anything decodes them.
+
+- **That the x64 raw-input header is 24 bytes.** The walk that finds the reports inside a
+  `WM_INPUT` packet starts there, and if it is wrong the two length fields read as
+  rubbish, every packet is rejected and no Fn key ever does anything. It fails silently
+  and it fails identically to the assumption above, which is why the dump names the place
+  a packet was given up on rather than only its length (7.1).
+
+- **That the fan-mode key should cycle.** The wire codes 37, 38 and 39 name Gigabyte's
+  own firmware modes, and three distinct codes describe a state rather than a "next"
+  edge. The app cycles anyway, because it has taken the mode machine over and there is no
+  code for Turbo at all. Only hardware can say whether the firmware runs its own rotation
+  underneath, in which case honouring the named mode is better and `HotkeyPolicy.NamedMode`
+  is the table to switch to. Section 7.5.
+
+- **That the backlight has exactly three levels**, 0, 25 and 50 on the wire, meaning 0 %,
+  50 % and 100 %. Doubling the byte would invent a scale nobody measured, so an
+  undocumented value is reported as not understood rather than guessed at. A four-step
+  keyboard shows up in 7.6 as a level the slider does not follow, and as a fan key that
+  seems to work only sometimes.
+
+- **That 250 ms is the right de-duplication window.** Chosen to sit above the gap between
+  two channels describing one press and below a deliberate double tap. Not measured. On
+  the documented data the two channels' vocabularies do not even overlap, so the window is
+  really insurance against key auto-repeat rather than against the cross-channel echo the
+  design names. Section 7.4.
+
+- **That the three extended window styles are enough** to make the overlay click-through
+  and focus-proof: `WS_EX_TRANSPARENT`, `WS_EX_NOACTIVATE` and `WS_EX_TOOLWINDOW`. None of
+  the three is exercisable without a desktop, and no test reaches past the markup that
+  declares their WPF-level counterparts. Section 7.7, where full-screen games are the part
+  nothing at all has looked at.
+
+- **That the DPI transform is the right one.** Correct on a single-DPI setup by
+  construction, and taken from the wrong monitor on a mixed-DPI one, because the scale
+  comes from the screen the card was last shown on. Section 7.8.
+
+- **That the WMI event's payload is a `Data` property that converts to an integer.** The
+  research names it and nothing has checked it. A wrong name, or a value the provider
+  hands over as text or as a real, is a subscription that runs and reports nothing,
+  silently, which is why 7.1 asks for the property names that did arrive.
+
+- **That cutting Gigabyte's five raw-input usages to three loses nothing.** The two
+  dropped are the standard keyboard and mouse pages, which under `RIDEV_INPUTSINK` would
+  deliver every keystroke typed anywhere on the machine into this elevated process for no
+  purpose. Every documented signal arrives on a vendor collection. If 7.2 finds a key that
+  does nothing and 7.9 finds nothing spurious, the missing signal may be one that only
+  arrives on the keyboard page. That is the case for adding `0x0001/0x0006` back, and the
+  only one.
+
+### The four checks worth doing first
+
+In this order. The first session does not need to reach the end of the section to be
+worth running.
+
+1. **7.1**, the dump. One line partitions every other unknown below it, and if it says
+   nothing has arrived, the rest of the section has nothing to measure.
+2. **7.3**, the volume and brightness keys with every overlay switched on. It is the
+   acceptance test for the release and it takes a few seconds.
+3. **7.2**, the walk along the Fn row with the dump open beside it. This is what settles
+   the byte-indexing assumption the whole release rests on.
+4. **7.5**, four presses of the fan key while watching which code the dump records. The
+   one observation that could change a design decision rather than a constant.
 
 ## Assumptions this checklist is really testing
 
