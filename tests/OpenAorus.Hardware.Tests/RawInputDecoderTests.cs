@@ -89,10 +89,11 @@ public class RawInputDecoderTests
     }
 
     [Fact]
-    public void A_launch_code_is_not_reachable_by_the_fan_wildcard()
+    public void A_fan_code_and_a_launch_code_a_hundred_apart_are_different_signals()
     {
-        // The launch block is exact on the first three bytes; the fan wildcard is not. Both
-        // orderings agree on 137-139 today, and this pins the one the research describes.
+        // 37 is not 137. This does not pin the case ordering, whatever the arrangement suggests:
+        // 37-39 and 137-139 are disjoint, so both orderings agree on all six. The ordering is
+        // pinned by Every_backlight_level_outranks_whatever_the_fourth_byte_says.
         Assert.Equal(
             new HotkeyEvent(HotkeySignal.LaunchRecovery),
             RawInputDecoder.Decode(new byte[] { 4, 0, 0, 137 }));
@@ -152,11 +153,15 @@ public class RawInputDecoderTests
 
     [Theory]
     [InlineData(new byte[] { 4, 0, 0, 200 })]
+    [InlineData(new byte[] { 4, 0, 9, 137 })]
     [InlineData(new byte[] { 4, 2, 0, 0 })]
     [InlineData(new byte[] { 9, 0, 2, 3, 0, 0, 0, 0, 0 })]
     [InlineData(new byte[] { 9, 0, 1, 4, 0, 0, 0, 0, 0 })]
     public void Anything_it_does_not_recognise_exactly_decodes_to_nothing(byte[] report)
     {
+        // `4, 0, 9, 137` is the launch row with its third byte changed. The research writes that
+        // byte as an exact 0, so launching a recovery tool must not survive losing it: it is the
+        // one byte in either table that no other test here holds in place.
         Assert.Null(RawInputDecoder.Decode(report));
     }
 

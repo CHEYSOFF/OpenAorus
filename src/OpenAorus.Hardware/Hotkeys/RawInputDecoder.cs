@@ -6,10 +6,16 @@ namespace OpenAorus.Hardware.Hotkeys;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Pure and total: no IO, no state, and every input that is not an exact documented match returns
-/// null rather than throwing or guessing. That matters more here than anywhere else in the app,
-/// because <c>RIDEV_INPUTSINK</c> delivers these reports regardless of focus - a pattern that
-/// matched loosely would act on input meant for another program.
+/// Pure, and total over report content: no IO, no state, and every report that is not an exact
+/// documented match - any length, any byte value, however malformed - returns null rather than
+/// throwing or guessing. That matters more here than anywhere else in the app, because
+/// <c>RIDEV_INPUTSINK</c> delivers these reports regardless of focus - a pattern that matched
+/// loosely would act on input meant for another program.
+/// </para>
+/// <para>
+/// The one deliberate exception is a null array, which is not report content at all: no device can
+/// send one, so it can only be this app calling itself wrongly, and
+/// <see cref="Decode(byte[])"/> throws rather than hiding that bug behind a quiet null return.
 /// </para>
 /// <para>
 /// THE ASSUMPTION THIS WHOLE RELEASE RESTS ON. The research names the report bytes
@@ -75,9 +81,17 @@ public static class RawInputDecoder
             }
         }
 
-        // `4, 1, <level>`, fourth byte unconstrained. Returning here rather than falling through
-        // is deliberate: a backlight report whose level is not one of the three documented ones is
-        // a backlight report this app cannot read, not an invitation to re-read it as a fan code.
+        // A READING, NOT A ROW - the third one this file rests on. The research documents three
+        // exact backlight patterns, `4, 1, 0`, `4, 1, 25` and `4, 1, 50`, and no `4, 1, *` family;
+        // taking the first two bytes alone to mean "this is a backlight report" is inferred here.
+        // The inference costs something real, because the fan rows ARE documented as wildcards:
+        // read literally, `4, 1, 12, 38` is a fan row and nothing else, and this returns null for
+        // it. Deliberate, and the same preference the 9-byte collection is given below - a report
+        // whose level byte is undocumented is a backlight report this app cannot read, and missing
+        // a fan change is better than firing one off a report we could not read. The symptom if
+        // the inference is wrong: on a chassis whose backlight has a step the research never saw,
+        // the fan key is dead for exactly those reports, which on the bench looks like "Fn+fan
+        // works sometimes" rather than like anything broken here.
         if (r[0] == 4 && r[1] == 1) return Backlight(r[2]);
 
         return FanMode(r[3]);
@@ -86,8 +100,10 @@ public static class RawInputDecoder
     private static HotkeyEvent? DecodeLong(byte[] r)
     {
         // Both documented 9-byte rows begin with 9, and neither of them is a fan row: the research
-        // lists the fan wildcard under the 4-byte table only. This collection carries traffic
-        // Gigabyte writes to and nobody has decoded, so nothing here matches loosely.
+        // lists the fan wildcard under the 4-byte table only. This collection carries 9-byte input
+        // and output reports, and the research documents just those two input rows, so nothing
+        // here matches loosely. Gigabyte does write to the 9-byte output report, but output
+        // reports never arrive on the input path this decoder serves, so they are not the reason.
         if (r[0] != 9) return null;
         if (r[3] == 23) return new HotkeyEvent(HotkeySignal.FirmwareVersionReply);
         if (r[2] == 1 && r[3] == 3) return new HotkeyEvent(HotkeySignal.DisplayBrightness, r[5]);
