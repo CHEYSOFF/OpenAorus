@@ -7,6 +7,9 @@
     <AssemblyName>OpenAorus</AssemblyName>
     <RootNamespace>OpenAorus.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Puts the icon on the executable, and with it on the window and the taskbar: WPF falls
+         back to the process's own icon for any Window that does not set one. -->
+    <ApplicationIcon>openaorus.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -16,5 +19,12 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <ProjectReference Include="..\OpenAorus.Hardware\OpenAorus.Hardware.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Embedded rather than copied beside the exe: the app publishes as a single file, and the
+         tray reads both of these out of the assembly at run time. LogicalName is given so the
+         names TrayIcon asks for do not depend on how the SDK would mangle the file names. -->
+    <EmbeddedResource Include="openaorus.ico" LogicalName="OpenAorus.App.openaorus.ico" />
+    <EmbeddedResource Include="openaorus-error.ico" LogicalName="OpenAorus.App.openaorus-error.ico" />
   </ItemGroup>
 </Project>

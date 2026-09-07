@@ -1,6 +1,4 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using OpenAorus.App.ViewModels;
 using OpenAorus.Hardware.Fans;
@@ -10,22 +8,33 @@ namespace OpenAorus.App;
 
 public sealed class TrayIcon : IDisposable
 {
+    /// <summary>The app's own icon, and the one <c>ApplicationIcon</c> puts on the executable and
+    /// the window. A bold A on the accent orange.</summary>
+    private const string OkResource = "OpenAorus.App.openaorus.ico";
+
+    /// <summary>The error state: the same tile in the theme's error red, carrying an exclamation
+    /// instead of the A.</summary>
+    /// <remarks>
+    /// The glyph changes as well as the colour, and deliberately. At the 16 px the notification
+    /// area actually draws, orange and red are two warm blocks of near-identical value - findable
+    /// side by side, but not "at a glance" on a taskbar the owner is not studying, and not at all
+    /// to the commonest colour vision deficiencies, which flatten exactly that pair. A different
+    /// shape survives both. The tile, its size and its corner radius stay put, so the icon is
+    /// still recognisably this app's.
+    /// </remarks>
+    private const string ErrorResource = "OpenAorus.App.openaorus-error.ico";
+
     private readonly NotifyIcon _icon = new();
     private readonly MainViewModel _vm;
     private readonly Icon _ok;
     private readonly Icon _err;
-    private readonly IntPtr _okHandle;
-    private readonly IntPtr _errHandle;
     private bool _disposed;
-
-    [DllImport("user32.dll")]
-    private static extern bool DestroyIcon(IntPtr handle);
 
     public TrayIcon(MainViewModel vm, Action toggleWindow, Action quit)
     {
         _vm = vm;
-        _ok = Draw(Color.FromArgb(0xFF, 0x7A, 0x1A), out _okHandle);
-        _err = Draw(Color.FromArgb(0xD6, 0x45, 0x45), out _errHandle);
+        _ok = Load(OkResource);
+        _err = Load(ErrorResource);
         _icon.Icon = _ok;
         _icon.Text = "OpenAorus";
         _icon.Visible = true;
@@ -56,21 +65,38 @@ public sealed class TrayIcon : IDisposable
         _icon.Icon = _vm.Banner == BannerKind.Error ? _err : _ok;
     }
 
-    private static Icon Draw(Color color, out IntPtr handle)
+    /// <summary>
+    /// Pulls one authored icon out of the assembly at the size the shell is about to draw it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Authored rather than drawn. The 16 px entry is hand-fitted to its own pixel grid - it is
+    /// not the 256 scaled down - because 16 px is the size the notification area actually shows
+    /// and the size an icon fails at.
+    /// </para>
+    /// <para>
+    /// <see cref="SystemInformation.SmallIconSize"/> is the size Windows wants for the
+    /// notification area at the current DPI: 16 at 100 %, 20 at 125 %, 24 at 150 %. The file
+    /// carries an entry authored at each of those, so this picks a real one rather than making
+    /// the shell resample. A size with no exact entry falls back to the nearest, which is what
+    /// the 32 and 48 are there for.
+    /// </para>
+    /// <para>
+    /// This is also why nothing here calls <c>DestroyIcon</c> any more. The old code drew a
+    /// bitmap and wrapped <see cref="Bitmap.GetHicon"/> in <see cref="Icon.FromHandle"/>, which
+    /// does not take ownership, so the raw handle had to be kept and destroyed by hand. An
+    /// <see cref="Icon"/> built from a stream owns its handle and gives it back in
+    /// <see cref="Icon.Dispose"/>; destroying it again here would be a double free, not a leak fix.
+    /// </para>
+    /// </remarks>
+    /// <param name="name">The manifest resource name of the .ico.</param>
+    /// <returns>The icon, owned by the caller.</returns>
+    /// <exception cref="InvalidOperationException">The resource is not in the assembly.</exception>
+    private static Icon Load(string name)
     {
-        using var bmp = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.Transparent);
-            using var brush = new SolidBrush(color);
-            g.FillEllipse(brush, 3, 3, 26, 26);
-            using var pen = new Pen(Color.FromArgb(0x15, 0x17, 0x1B), 3);
-            g.DrawLine(pen, 16, 8, 16, 24);   // simple "fan blade" glyph
-            g.DrawLine(pen, 8, 16, 24, 16);
-        }
-        handle = bmp.GetHicon();
-        return Icon.FromHandle(handle);
+        using var stream = typeof(TrayIcon).Assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException($"Icon resource '{name}' is missing from the assembly.");
+        return new Icon(stream, SystemInformation.SmallIconSize);
     }
 
     public void Dispose()
@@ -81,9 +107,5 @@ public sealed class TrayIcon : IDisposable
         _icon.Dispose();
         _ok.Dispose();
         _err.Dispose();
-        // Icon.FromHandle does not take ownership of the HICON, so the GDI handle must be destroyed
-        // separately after the Icon wrapper is disposed.
-        DestroyIcon(_okHandle);
-        DestroyIcon(_errHandle);
     }
 }

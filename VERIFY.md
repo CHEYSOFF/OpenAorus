@@ -45,6 +45,14 @@ dotnet run --project src/OpenAorus.App -- --dump
 Launch the app: `dotnet run --project src/OpenAorus.App -- --show`
 
 - [ ] The tray icon appears and the window opens at the bottom right
+- [ ] The tray icon is a dark **A** on an orange tile, and it is legible - not a smudge -
+      at whatever size your notification area draws it. The window's title bar and its
+      taskbar button carry the same mark, and so does `OpenAorus.exe` in Explorer. If
+      Windows has put the icon in the hidden overflow, drag it out: an app cannot promote
+      itself out of there, and nothing in this build tries to
+- [ ] Make the app show an error - the easiest is to run it without elevation on a machine
+      whose WMI writes need it - and confirm the tray icon changes to a red tile with an
+      exclamation mark, and back again when the error clears
 - [ ] Temperatures and RPM update about once a second
 - [ ] The status line reads `Applied Normal at startup`
 - [ ] **Gaming** makes the fans audibly ramp within a couple of seconds and the duty
