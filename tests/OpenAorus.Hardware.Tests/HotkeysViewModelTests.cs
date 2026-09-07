@@ -67,6 +67,7 @@ public class HotkeysViewModelTests : IDisposable
         settings.Hotkeys.Enabled = false;
         settings.Hotkeys.OverlayForBacklight = true;
         settings.Hotkeys.OverlayForWifi = true;
+        settings.Hotkeys.OverlayForPanelBrightness = false;
         settings.Hotkeys.OverlaySeconds = 4;
 
         var vm = Card(Build(settings));
@@ -76,7 +77,21 @@ public class HotkeysViewModelTests : IDisposable
         Assert.True(vm.OverlayForBacklight);
         Assert.False(vm.OverlayForTouchpad);
         Assert.True(vm.OverlayForWifi);
+        // Off here, and the card has to say off. This is the one switch that starts on, so a card
+        // that ignored the saved value would look right on a fresh install and wrong ever after.
+        Assert.False(vm.OverlayForPanelBrightness);
         Assert.Equal(4, vm.OverlaySeconds);
+    }
+
+    [Fact]
+    public void The_brightness_switch_opens_ticked_on_a_fresh_install()
+    {
+        var vm = Card(Build(new AppSettings()));
+
+        // The one overlay that defaults on - see HotkeySettings.OverlayForPanelBrightness for
+        // why. An owner who opens Settings must see the state the app is actually in.
+        Assert.True(vm.OverlayForPanelBrightness);
+        Assert.False(vm.OverlayForFanMode);
     }
 
     [Fact]
@@ -89,6 +104,9 @@ public class HotkeysViewModelTests : IDisposable
         vm.OverlayForBacklight = true;
         vm.OverlayForTouchpad = true;
         vm.OverlayForWifi = true;
+        // Off, not on: a switch that defaults on is only proven to be saved by turning it off and
+        // finding it still off, which is the direction a forgotten line in Save would lose.
+        vm.OverlayForPanelBrightness = false;
         vm.OverlaySeconds = 3;
 
         vm.SaveCommand.Execute(null);
@@ -99,6 +117,7 @@ public class HotkeysViewModelTests : IDisposable
         Assert.True(reloaded.OverlayForBacklight);
         Assert.True(reloaded.OverlayForTouchpad);
         Assert.True(reloaded.OverlayForWifi);
+        Assert.False(reloaded.OverlayForPanelBrightness);
         Assert.Equal(3, reloaded.OverlaySeconds);
     }
 

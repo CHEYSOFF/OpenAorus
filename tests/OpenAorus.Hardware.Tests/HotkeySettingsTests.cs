@@ -67,7 +67,7 @@ public class HotkeySettingsTests : IDisposable
     // ---- the type itself -------------------------------------------------------------------
 
     [Fact]
-    public void The_channels_are_on_and_every_overlay_is_off_out_of_the_box()
+    public void The_channels_are_on_and_every_overlay_but_one_is_off_out_of_the_box()
     {
         var s = new HotkeySettings();
 
@@ -77,6 +77,13 @@ public class HotkeySettingsTests : IDisposable
         Assert.False(s.OverlayForBacklight);
         Assert.False(s.OverlayForTouchpad);
         Assert.False(s.OverlayForWifi);
+
+        // The exception, and the only one. The two panel-brightness keys have no other feedback
+        // of any kind: the firmware reports them and does not act on them, and the change this
+        // app makes instead never travels through Windows' hotkey path, so Windows draws nothing
+        // either. Without this card the key looks broken. The argument is set out in full on the
+        // property itself.
+        Assert.True(s.OverlayForPanelBrightness);
     }
 
     [Fact]
@@ -351,11 +358,16 @@ public class HotkeySettingsTests : IDisposable
     // ---- the rule no settings file may reach ------------------------------------------------
 
     [Fact]
-    public void No_saved_setting_can_make_the_display_brightness_key_draw()
+    public void No_saved_setting_can_make_the_nine_byte_brightness_report_draw()
     {
         // An owner - or a future version, or a hand edit - inventing the switch they wish existed.
-        // Unknown properties are ignored on load, and HotkeyPolicy.MayDraw has no arm for
-        // brightness whatever the file says, so the second overlay stays impossible.
+        // Unknown properties are ignored on load, and HotkeyPolicy.MayDraw has no arm for the
+        // report whatever the file says, so the second overlay stays impossible.
+        //
+        // NOT the two brightness KEYS, which are drawn for on purpose and have a switch of their
+        // own. The report says the brightness has already changed, which means something else
+        // changed it and drew its own card; the keys say only that a key was pressed and nothing
+        // has happened yet. The file below deliberately spells the invented name the old way.
         var store = StoreOver(
             """
             {"Hotkeys":{"Enabled":true,"OverlayForFanMode":true,"OverlayForBacklight":true,

@@ -181,8 +181,10 @@ public class SignalDebouncerTests
     [Fact]
     public void Every_brightness_byte_is_its_own_key()
     {
-        // The reason the table needs no eviction: what the decoders can produce is thirteen
-        // signals, three backlight steps and 256 brightness bytes. It cannot grow past that.
+        // The reason the table needs no eviction: what the decoders can produce is fifteen
+        // signals, three backlight steps and 256 brightness bytes. It cannot grow past that -
+        // the two panel-brightness keys carry no level, so they are two more keys, not two more
+        // ranges.
         var d = new SignalDebouncer();
 
         for (var level = 0; level <= 255; level++)

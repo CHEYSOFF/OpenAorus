@@ -3,6 +3,7 @@ using System.Reflection;
 using OpenAorus.Hardware.Battery;
 using OpenAorus.Hardware.Config;
 using OpenAorus.Hardware.Diagnostics;
+using OpenAorus.Hardware.Display;
 using OpenAorus.Hardware.Fans;
 using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Lighting;
@@ -30,6 +31,22 @@ public sealed class AppServices
     public required bool KeyboardPresent { get; init; }
     public required string Version { get; init; }
     public required string ExePath { get; init; }
+
+    /// <summary>The display panel's own brightness, for the two Fn keys nothing else services.</summary>
+    /// <remarks>
+    /// <para>
+    /// NOT REACHED THROUGH <see cref="Wmi"/>, and that is the one hardware path in this app which
+    /// is not. The Gigabyte interface answers <c>Invalid object</c> for brightness on this model -
+    /// the embedded controller does not expose the panel - so this goes through Windows' own
+    /// <c>WmiMonitorBrightness</c> classes instead. See <see cref="IPanelBrightness"/>.
+    /// </para>
+    /// <para>
+    /// Defaulted rather than required, and to a panel that does nothing rather than to null: every
+    /// test rig that has no interest in the screen gets a controller that is safe to call, and no
+    /// call site on a callback path has to remember a null check.
+    /// </para>
+    /// </remarks>
+    public PanelBrightnessController PanelBrightness { get; init; } = new(new NoPanelBrightness());
 
     /// <summary>What the two hotkey channels have seen, shared by whatever opens them and read
     /// back by <see cref="WriteDiagnostics"/>.</summary>
@@ -68,6 +85,10 @@ public sealed class AppServices
 
         return new AppServices
         {
+            // Nothing is read here: the class enumerates root\WMI on first use, and a machine with
+            // no controllable panel simply answers null there. Constructing it is free, so --apply
+            // and --dump, which exit before a window exists, never touch the panel.
+            PanelBrightness = new PanelBrightnessController(new WmiPanelBrightness()),
             HotkeyTrace = trace,
             Hotkeys = settings.Hotkeys.Enabled
                 ? BuildHotkeys(settings, trace, TrackAppliedMode(fans, settings.Mode))

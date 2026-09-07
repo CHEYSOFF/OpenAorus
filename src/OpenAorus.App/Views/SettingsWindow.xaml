@@ -89,10 +89,10 @@
                     <TextBlock Style="{StaticResource CardTitle}" Text="Fn hotkeys"/>
                     <CheckBox Content="Respond to the Fn row" IsChecked="{Binding HotkeysEnabled}"/>
                     <TextBlock Style="{StaticResource Body}" Margin="25,4,0,0"
-                               Text="Cycles the fan mode, follows the keyboard backlight, and reports the touchpad and Wi-Fi keys. Volume and display brightness are left to Windows, which already draws an overlay for both."/>
+                               Text="Cycles the fan mode, follows the keyboard backlight, reports the touchpad and Wi-Fi keys, and changes the screen brightness. Volume is left to Windows, which already draws an overlay for it."/>
 
                     <!-- Disabled rather than hidden while the Fn row is off, so the owner can see
-                         what turning it back on would give them. The heading dims with the four
+                         what turning it back on would give them. The heading dims with the five
                          switches it heads; the Save button below stays live, because switching
                          the Fn row off is itself a thing that has to be saveable. -->
                     <StackPanel IsEnabled="{Binding HotkeysEnabled}">
@@ -102,10 +102,20 @@
                                       IsChecked="{Binding OverlayForFanMode}"/>
                             <CheckBox Content="Keyboard backlight" Margin="0,0,0,9"
                                       IsChecked="{Binding OverlayForBacklight}"/>
-                            <CheckBox Content="Touchpad" Margin="0,0,8,0"
+                            <CheckBox Content="Touchpad" Margin="0,0,8,9"
                                       IsChecked="{Binding OverlayForTouchpad}"/>
-                            <CheckBox Content="Wi-Fi" IsChecked="{Binding OverlayForWifi}"/>
+                            <CheckBox Content="Wi-Fi" Margin="0,0,0,9"
+                                      IsChecked="{Binding OverlayForWifi}"/>
+                            <!-- The only one that starts ticked. This laptop's firmware reports
+                                 the brightness keys without acting on them, so OpenAorus makes the
+                                 change itself - and because that change never goes through
+                                 Windows' hotkey path, Windows draws nothing for it. Untick it and
+                                 the keys still work, silently. -->
+                            <CheckBox Content="Screen brightness" Margin="0,0,8,0"
+                                      IsChecked="{Binding OverlayForPanelBrightness}"/>
                         </UniformGrid>
+                        <TextBlock Style="{StaticResource Muted}" Margin="2,2,0,0" TextWrapping="Wrap"
+                                   Text="Screen brightness is the one overlay that starts on: this laptop reports those keys but does not act on them, so OpenAorus changes the brightness and nothing else shows you that it did."/>
                     </StackPanel>
 
                     <!-- The same three-column footing as the sensor card above, so the two Save

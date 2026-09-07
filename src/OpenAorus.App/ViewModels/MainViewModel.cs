@@ -366,6 +366,22 @@ public partial class MainViewModel : ObservableObject
                 await ApplyModeAsync(mode, () => Draw(action));
                 return;
 
+            case HotkeyOutcome.StepPanelBrightness:
+            {
+                // THE ONLY HOTKEY WHOSE CARD IS WORDED HERE RATHER THAN IN THE POLICY, because it
+                // is the only one whose result nobody can predict: which level a step lands on is
+                // the panel's to say, and a card built from the request would show a number the
+                // screen is not showing. Null means nothing moved - no controllable panel, or a
+                // write the panel refused - and nothing moved is nothing to narrate.
+                //
+                // Off the UI thread, unlike every other arm. This one makes a WMI round trip, and
+                // it is reached from a raw-input callback by way of the dispatcher; run inline it
+                // would stall the message pump for as long as root\WMI takes to answer.
+                var level = await Task.Run(() => _s.PanelBrightness.Step(action.Step));
+                if (level is { } percent) Draw(action with { Text = $"Display brightness {percent} %" });
+                return;
+            }
+
             case HotkeyOutcome.SetBacklightLevel:
                 Lighting.NoteFirmwareBacklight(action.Level);
                 break;

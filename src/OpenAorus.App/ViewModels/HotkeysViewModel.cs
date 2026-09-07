@@ -10,11 +10,18 @@ namespace OpenAorus.App.ViewModels;
 /// </summary>
 /// <remarks>
 /// <para>
-/// There is deliberately no switch for volume or display brightness, and adding one would be a
-/// mistake rather than an omission to fix. Windows already draws both, a second card on top of
-/// its own is the complaint this release answers, and
-/// <see cref="Hardware.Hotkeys.HotkeyPolicy"/> refuses them whatever is set here - so a switch
-/// could only promise something the policy will not do.
+/// There is deliberately no switch for volume, and adding one would be a mistake rather than an
+/// omission to fix. The volume keys never reach this app at all - they live on the consumer-control
+/// collection it never registers - so a switch could only promise something the app cannot do.
+/// There is likewise none for the 9-byte display-brightness report, which says the brightness has
+/// already changed and therefore that something else changed it and drew its own card;
+/// <see cref="Hardware.Hotkeys.HotkeyPolicy"/> refuses that whatever is set here.
+/// </para>
+/// <para>
+/// <see cref="OverlayForPanelBrightness"/> is neither of those and is the one switch that starts
+/// ticked. It governs the two Fn keys the firmware reports and does not act on; nothing else on
+/// the machine draws for them, because the change this app makes instead never travels through
+/// Windows' hotkey path. See <see cref="HotkeySettings.OverlayForPanelBrightness"/>.
 /// </para>
 /// <para>
 /// The card sits outside the Settings window's <c>CanWrite</c> gate. Three of the four halves -
@@ -44,6 +51,13 @@ public sealed partial class HotkeysViewModel : ObservableObject
     [ObservableProperty] private bool _overlayForBacklight;
     [ObservableProperty] private bool _overlayForTouchpad;
     [ObservableProperty] private bool _overlayForWifi;
+
+    /// <summary>The one switch on this card that starts ticked.</summary>
+    /// <remarks>See <see cref="HotkeySettings.OverlayForPanelBrightness"/> for the argument. In
+    /// short: the two brightness keys are the only ones with no feedback behind them at all, so
+    /// their card is not a convenience but the whole of what the owner sees happen.</remarks>
+    [ObservableProperty] private bool _overlayForPanelBrightness;
+
     [ObservableProperty] private int _overlaySeconds;
 
     /// <param name="s">The app's services; its <see cref="AppSettings.Hotkeys"/> is the live
@@ -66,6 +80,7 @@ public sealed partial class HotkeysViewModel : ObservableObject
         _overlayForBacklight = saved.OverlayForBacklight;
         _overlayForTouchpad = saved.OverlayForTouchpad;
         _overlayForWifi = saved.OverlayForWifi;
+        _overlayForPanelBrightness = saved.OverlayForPanelBrightness;
         _overlaySeconds = saved.OverlaySeconds;
     }
 
@@ -79,6 +94,7 @@ public sealed partial class HotkeysViewModel : ObservableObject
         saved.OverlayForBacklight = OverlayForBacklight;
         saved.OverlayForTouchpad = OverlayForTouchpad;
         saved.OverlayForWifi = OverlayForWifi;
+        saved.OverlayForPanelBrightness = OverlayForPanelBrightness;
         saved.OverlaySeconds = Math.Clamp(
             requested, HotkeySettings.MinOverlaySeconds, HotkeySettings.MaxOverlaySeconds);
 

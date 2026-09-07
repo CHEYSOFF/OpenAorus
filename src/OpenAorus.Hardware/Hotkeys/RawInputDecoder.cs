@@ -32,6 +32,16 @@ namespace OpenAorus.Hardware.Hotkeys;
 /// reply's BCD version nibbles in "bytes 7 and 8" are <c>report[6]</c> and <c>report[7]</c>. The
 /// version is not carried in the signal, so those two bytes are only ever skipped over.
 /// </para>
+/// <para>
+/// SINCE THEN, THE READING HAS BEEN CONFIRMED - and the tables it was read from have not. On an
+/// AORUS 17G KD every report arrived four bytes long beginning <c>04</c>, with the first byte
+/// equal to the report length, which is exactly what <c>bRawData1 == report[0]</c> predicts. But
+/// the key codes were none of the ones recovered: the two brightness keys are 125 and 126, and two
+/// further codes, 134 and 135, are still unidentified. So the byte indexing below is now a
+/// measurement, while the launcher, backlight and fan codes remain decompiled guesses that this
+/// chassis has never been seen to send. The two brightness cases carry their own note saying which
+/// side of that line they are on.
+/// </para>
 /// </remarks>
 public static class RawInputDecoder
 {
@@ -78,8 +88,28 @@ public static class RawInputDecoder
                 case 137: return new HotkeyEvent(HotkeySignal.LaunchRecovery);
                 case 138: return new HotkeyEvent(HotkeySignal.LaunchUpdateAll);
                 case 139: return new HotkeyEvent(HotkeySignal.LaunchUpdateAllDefault);
+
+                // OBSERVED ON HARDWARE, and the only two patterns in this file that are. The rest
+                // of the class is a reading of decompiled field names; these two were watched
+                // arrive on an AORUS 17G KD - see the "Observed on hardware" section of
+                // docs/research/fn-hotkey-signals.md. Neither code appears in the recovered tables.
+                //
+                // THE PRESS ONLY. A tap sends the code and then `04 00 00 00`, so the release
+                // falls through to FanMode(0), which names no mode and answers null. That is what
+                // makes one tap one step; matching more loosely here - on byte 2, or on anything
+                // that also fits the release - would dim the panel twice per press.
+                case 125: return new HotkeyEvent(HotkeySignal.PanelBrightnessDown);
+                case 126: return new HotkeyEvent(HotkeySignal.PanelBrightnessUp);
             }
         }
+
+        // AND BYTE 2 IS NOT ALWAYS ZERO. The same hardware sends `04 00 01 86` / `04 00 00 86` and
+        // the same pair for 87: a second release convention, where the code is kept and byte 2
+        // carries the press flag instead. Nobody has identified those two keys, so nothing below
+        // matches them and both halves fall out as null - but they are ordinary traffic rather
+        // than malformed reports, and HotkeyTrace writes every one of them down by its bytes so
+        // that whoever names them next has the evidence. Do not add a pattern for 134 or 135 here
+        // without first knowing which keys they are.
 
         // A READING, NOT A ROW - the third one this file rests on. The research documents three
         // exact backlight patterns, `4, 1, 0`, `4, 1, 25` and `4, 1, 50`, and no `4, 1, *` family;

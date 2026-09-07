@@ -115,8 +115,10 @@ public class RawInputDecoderTests
     [InlineData(255)]
     public void The_brightness_level_is_passed_through_untouched(int level)
     {
-        // Nothing documents a range for this byte, so it is reported as it arrived. The signal
-        // is decoded and then deliberately ignored anyway; Windows draws this overlay already.
+        // Nothing documents a range for this byte, so it is reported as it arrived. The signal is
+        // decoded and then deliberately ignored anyway: this report says the brightness has
+        // ALREADY changed, so whatever changed it drew its own card. Not to be confused with the
+        // two brightness keys below, which say only that a key was pressed.
         var report = new byte[] { 9, 0, 1, 3, 0, (byte)level, 0, 0, 0 };
         Assert.Equal(new HotkeyEvent(HotkeySignal.DisplayBrightness, level), RawInputDecoder.Decode(report));
     }
@@ -223,5 +225,76 @@ public class RawInputDecoderTests
     public void A_null_report_is_a_programming_error_not_an_unknown_key()
     {
         Assert.Throws<ArgumentNullException>(() => RawInputDecoder.Decode(null!));
+    }
+
+    // ---- Observed on hardware, not decompiled ---------------------------------------------
+    //
+    // Everything above this line is a reading of Gigabyte's binaries. Everything below was
+    // watched arrive on an AORUS 17G KD through the diagnostics trace, and where the two
+    // disagree the measurement wins for this chassis. See the "Observed on hardware" section
+    // of docs/research/fn-hotkey-signals.md.
+
+    [Theory]
+    [InlineData(125, HotkeySignal.PanelBrightnessDown)]
+    [InlineData(126, HotkeySignal.PanelBrightnessUp)]
+    public void The_two_brightness_keys_this_chassis_really_sends_are_decoded(int code, HotkeySignal expected)
+    {
+        // 125 is 7D and 126 is 7E. Neither appears anywhere in the recovered tables, which give
+        // 137-139 for the launcher keys and 37-39 for fan modes; this chassis sends none of those.
+        Assert.Equal(new HotkeyEvent(expected), RawInputDecoder.Decode(new byte[] { 4, 0, 0, (byte)code }));
+    }
+
+    [Fact]
+    public void The_release_that_follows_a_brightness_press_decodes_to_nothing()
+    {
+        // Every tap is two reports: `04 00 00 7E` and then `04 00 00 00`. Decoding the release as
+        // anything would move the panel two steps for one press, which is the single most likely
+        // way for this feature to be wrong in a way the owner notices immediately.
+        Assert.Null(RawInputDecoder.Decode(new byte[] { 4, 0, 0, 0 }));
+    }
+
+    [Fact]
+    public void A_tap_of_a_brightness_key_is_one_signal_and_one_nothing()
+    {
+        // The pair as it actually arrives, in order, rather than each half in isolation.
+        Assert.Equal(
+            new HotkeyEvent(HotkeySignal.PanelBrightnessUp),
+            RawInputDecoder.Decode(new byte[] { 4, 0, 0, 0x7E }));
+        Assert.Null(RawInputDecoder.Decode(new byte[] { 4, 0, 0, 0x00 }));
+    }
+
+    [Theory]
+    [InlineData(134)]
+    [InlineData(135)]
+    public void The_two_codes_nobody_has_identified_yet_are_not_acted_on(int code)
+    {
+        // 86 and 87 on the wire. Recorded by HotkeyTrace, decoded by nothing: a code whose key
+        // nobody has named must not be given an action on the strength of being nearby in the
+        // number space. The trace is where the next person picks them up.
+        Assert.Null(RawInputDecoder.Decode(new byte[] { 4, 0, 1, (byte)code }));
+        Assert.Null(RawInputDecoder.Decode(new byte[] { 4, 0, 0, (byte)code }));
+    }
+
+    [Fact]
+    public void A_non_zero_third_byte_is_a_press_flag_and_not_a_malformed_report()
+    {
+        // Two release conventions exist on this chassis. The brightness keys clear the code
+        // (`04 00 00 7D` then `04 00 00 00`); the 86/87 keys keep it and toggle byte 2 from 1 to
+        // 0. So a report with byte 2 set is ordinary traffic, and the decoder has to answer "not
+        // a key I know" for it rather than treating it as a shape that cannot happen.
+        for (var code = 0; code <= 255; code++)
+        {
+            var e = Record.Exception(() => RawInputDecoder.Decode(new byte[] { 4, 0, 1, (byte)code }));
+            Assert.Null(e);
+        }
+    }
+
+    [Fact]
+    public void The_brightness_keys_are_the_press_only_and_never_the_release_pattern()
+    {
+        // Guards the one edit that would break the pair above: widening the match to ignore the
+        // fourth byte, or matching on byte 2 alone, would turn the release into a second step.
+        Assert.Null(RawInputDecoder.Decode(new byte[] { 4, 0, 1, 0x7D }));
+        Assert.Null(RawInputDecoder.Decode(new byte[] { 4, 0, 1, 0x7E }));
     }
 }

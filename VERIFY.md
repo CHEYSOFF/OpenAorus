@@ -390,6 +390,17 @@ is the channel working.
       but would match them shifted along by one byte, is the answer to this whole section
 - [ ] **Most keys working and two dead** is a research gap, not an indexing error.
       Record which two
+- [ ] On an AORUS 17G KD the indexing above is already confirmed and the recovered codes are
+      already known to be wrong: this chassis sends `04 00 00 7D` and `04 00 00 7E` for the
+      two brightness keys, and none of `25`/`26`/`27` or `89`/`8A`/`8B`. If your dump shows
+      those recovered codes, you have a different chassis and that is worth reporting
+- [ ] **`04 00 01 86` / `04 00 00 86` and the same pair for `87` are known and unidentified.**
+      Two codes, 134 and 135, each sending a press and then a release that keeps the code and
+      clears the third byte - a different convention from the brightness keys, which clear the
+      code instead. Nothing in the app acts on them. If you can work out **which two keys**
+      produce them, that is the most useful single thing this section can turn up: press each
+      Fn combination in isolation, export the dump, and note which press produced `86` and
+      which `87`
 - [ ] Note in particular whether the Fn key alone is visible, or only the combinations.
       The research could not say
 - [ ] The app registers three vendor collections and never the standard keyboard page. If
@@ -403,17 +414,47 @@ is the channel working.
       mute. Exactly one overlay must appear, Windows' own, and the volume must actually
       change
 - [ ] Repeat with Gigabyte Control Center taken over
-- [ ] Do the same with the display-brightness keys. Again: exactly one overlay, Windows'
-      own
 - [ ] **This is the acceptance test for the whole release.** Everything else in this
-      section is a feature; a second card on either of those is the bug v0.3 exists to
-      remove, reintroduced
-- [ ] The two suppressions are not the same kind of thing, so a failure means different
-      things. Volume is structural: its keys live on the consumer-control collection,
-      which this app never registers, so a second volume card would mean something has
-      started registering that page. Display brightness does arrive, on
-      `0xFF00/0xFF00`, and is refused in `HotkeyPolicy`, so a second brightness card
-      would mean that refusal has gone. Say which one you saw
+      section is a feature; a second card over one Windows already draws is the bug v0.3
+      exists to remove, reintroduced
+- [ ] Volume is structural rather than a rule anyone keeps: its keys live on the
+      consumer-control collection, which this app never registers, so they never arrive,
+      there is no signal for them, and a second volume card would mean something has
+      started registering that page
+- [ ] The 9-byte display-brightness **report** - `09` leading, `01 03` in its third and
+      fourth bytes - is the other half, and it is a rule `HotkeyPolicy` keeps. It says the
+      brightness has already changed, which means something else changed it and drew its
+      own card. If that report ever arrives on this chassis and a second card appears with
+      it, the refusal has gone. Say which of the two you saw
+
+### 7.3a The brightness keys, and why they are the exception
+
+The brightness **keys** are not the brightness report, and this release draws for them on
+purpose. Read section 7.3 first; this is the deliberate reversal of it.
+
+- [ ] Press screen-brightness down and then up. **The screen must actually change**, and
+      it must change by roughly a tenth of its range per press
+- [ ] Exactly one overlay, and it must be OpenAorus' own. Windows draws nothing here, so
+      one card is correct and none would mean this app failed to
+- [ ] **If the screen does not change at all**, the panel is not controllable through
+      `WmiMonitorBrightness` on this machine. Check with
+      `Get-CimInstance -Namespace root\WMI -ClassName WmiMonitorBrightness`: no instance
+      means a desktop, an external monitor, or a driver that publishes none, and the keys
+      doing nothing quietly is the designed behaviour there
+- [ ] Hold one of them down. The brightness should walk and then stop when you let go -
+      the de-duplication window bounds it to about four steps a second
+- [ ] Tap one once, quickly. **One step, not two.** Every tap puts two reports on the wire,
+      the press and then `04 00 00 00`; two steps per tap would mean the release is being
+      decoded as a press
+- [ ] Untick **Screen brightness** in Settings and press the keys again. The brightness
+      must still change and no card must appear - the switch governs the drawing, never
+      the doing
+- [ ] Why this is not the bug coming back: on this chassis the firmware reports these keys
+      and does not act on them (Gigabyte's software was doing it), so nothing changes and
+      nothing is drawn until OpenAorus does both. The change goes through `WmiSetBrightness`
+      rather than through Windows' hotkey path, so Windows never draws for it. There is no
+      first card to be second to. If you ever see **two** cards here, that reasoning has
+      stopped being true on your machine and this switch should be turned off
 
 ### 7.4 One keypress, one action
 
@@ -592,11 +633,14 @@ worth running.
 
 1. **7.1**, the dump. One line partitions every other unknown below it, and if it says
    nothing has arrived, the rest of the section has nothing to measure.
-2. **7.3**, the volume and brightness keys with every overlay switched on. It is the
-   acceptance test for the release and it takes a few seconds.
-3. **7.2**, the walk along the Fn row with the dump open beside it. This is what settles
-   the byte-indexing assumption the whole release rests on.
-4. **7.5**, four presses of the fan key while watching which code the dump records. The
+2. **7.3**, the volume keys with every overlay switched on. It is the acceptance test for
+   the release and it takes a few seconds.
+3. **7.3a**, the two brightness keys. The one Fn feature this app performs rather than
+   merely reports, and the one overlay that ships switched on. Also seconds.
+4. **7.2**, the walk along the Fn row with the dump open beside it. On a 17G KD the part
+   this settled - the byte indexing - is settled; what is still open there is which keys
+   send the unidentified codes 134 and 135.
+5. **7.5**, four presses of the fan key while watching which code the dump records. The
    one observation that could change a design decision rather than a constant.
 
 ## Assumptions this checklist is really testing

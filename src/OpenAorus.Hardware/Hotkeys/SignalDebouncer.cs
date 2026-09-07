@@ -28,8 +28,9 @@ namespace OpenAorus.Hardware.Hotkeys;
 /// until release.
 /// </para>
 /// <para>
-/// The table is bounded by what the decoders can produce - thirteen signals, three backlight steps
-/// and 256 brightness bytes - so it cannot grow without limit and there is nothing to evict.
+/// The table is bounded by what the decoders can produce - fifteen signals, three backlight steps
+/// and 256 brightness bytes - so it cannot grow without limit and there is nothing to evict. The
+/// two panel-brightness keys carry no level of their own, so they add two keys and not two ranges.
 /// </para>
 /// </remarks>
 public sealed class SignalDebouncer

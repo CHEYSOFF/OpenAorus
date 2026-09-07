@@ -74,17 +74,30 @@ and stops producing the second on-screen display that started this project:
   arguing with it. Nothing is written back to the keyboard
 - The touchpad and Wi-Fi keys are reported. The firmware has already done the
   toggle by the time the app hears about it, so there is nothing to do but say so
-- Volume and display brightness are decoded and then deliberately ignored.
-  **OpenAorus never draws an overlay for either, because Windows already draws
-  one**, and a second card on top of the first is the whole reason this release
-  exists. There is no setting for it, and adding one would be a mistake rather
-  than a feature
+- The screen-brightness keys **are made to work by OpenAorus**, because on this
+  chassis nothing else does. The firmware reports the key and then leaves the
+  panel exactly where it was; Gigabyte's software was performing the change
+  itself, and the embedded controller does not expose brightness at all. So
+  OpenAorus sets it through Windows' own `WmiSetBrightness`, stepping through
+  the levels the panel says it supports rather than adding a fixed percentage.
+  A machine with no controllable panel — a desktop, or a lid closed onto an
+  external monitor — does nothing, quietly
+- Volume is never even received. Its keys live on the consumer-control
+  collection OpenAorus deliberately does not register, so **there is no volume
+  overlay to switch on and no setting for one**, and adding either would be a
+  mistake rather than a feature. The same goes for the separate report that says
+  the brightness has *already* changed: something else made that change and drew
+  its own card, and a second card on top of the first is the whole reason this
+  release exists
 
-The overlay itself is **off by default**, and opt-in per signal: fan mode,
-keyboard backlight, touchpad and Wi-Fi each have their own switch in Settings,
-plus how long the card stays up. With all four off, which is what ships, nothing
-is ever drawn and the fan and backlight keys still work. The whole Fn row can
-also be switched off in one place, and that stops the app listening at all.
+The overlay is **off by default for everything except the screen-brightness
+keys**, and opt-in per signal: fan mode, keyboard backlight, touchpad, Wi-Fi and
+screen brightness each have their own switch in Settings, plus how long the card
+stays up. Brightness is the one exception because it is the one key with no
+other feedback at all — the firmware draws nothing, and Windows draws nothing
+either, because the change OpenAorus makes never travels through its hotkey
+path. Untick it and the keys still work, silently. The whole Fn row can also be
+switched off in one place, and that stops the app listening at all.
 
 Two channels carry this, and they need different things. Raw input on three of
 the keyboard's vendor collections **needs no administrator rights**; the
@@ -95,12 +108,16 @@ pages, so it never sees ordinary typing, and it could not draw over the Windows
 volume overlay even if someone asked it to, because the volume keys are never
 delivered to it in the first place.
 
-None of this has been seen working on a real machine. Every byte pattern and
-every event value came out of Gigabyte's own binaries, and it is entirely
-possible that this chassis emits nothing at all on these channels and that the
-whole feature does nothing. Because "nothing happened" is also what a misread
-report looks like, the app writes down every report it receives, by its bytes,
-before anything decodes it, along with anything it could not read and why. That
+The channel itself has now been watched on an AORUS 17G KD: reports arrive, and
+the byte indexing the decoder assumed is confirmed. What has **not** held up is
+the key codes. Everything recovered from Gigabyte's binaries — the launcher
+codes, the fan-mode codes, the backlight levels — remains unconfirmed, and this
+chassis has not been seen to send any of them. What it does send is the two
+brightness keys above, plus two further codes nobody has identified yet, which
+are written down and acted on by nothing. Because "nothing happened" is also what
+a misread report looks like, the app writes down every report it receives, by its
+bytes, before anything decodes it, along with anything it could not read and why.
+That
 record is in the diagnostics file the **Diagnostics** button in the window footer
 writes. If the Fn row does nothing on your machine, that file is what says
 whether anything arrived; section 7 of [`VERIFY.md`](VERIFY.md) walks through

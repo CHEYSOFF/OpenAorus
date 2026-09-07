@@ -4,6 +4,7 @@ using OpenAorus.App.Hotkeys;
 using OpenAorus.App.ViewModels;
 using OpenAorus.Hardware.Battery;
 using OpenAorus.Hardware.Config;
+using OpenAorus.Hardware.Display;
 using OpenAorus.Hardware.Fans;
 using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Lighting;
@@ -40,6 +41,7 @@ public class MainViewModelHotkeyTests : IDisposable
     {
         public required FakeGigabyteWmi Wmi { get; init; }
         public required FakeKeyboardHid Hid { get; init; }
+        public required FakePanelBrightness Panel { get; init; }
         public required AppServices Services { get; init; }
         public required MainViewModel Vm { get; init; }
 
@@ -50,13 +52,22 @@ public class MainViewModelHotkeyTests : IDisposable
         public List<string> Overlays { get; } = new();
     }
 
-    private Rig Build(Func<int, Task>? fanDelay = null, bool keyboardPresent = true, ModelProfile? model = null)
+    private Rig Build(
+        Func<int, Task>? fanDelay = null,
+        bool keyboardPresent = true,
+        ModelProfile? model = null,
+        PanelBrightnessState? panel = null)
     {
         var profile = model ?? ModelProfile.Detect("AORUS 17G KD");
         var wmi = new FakeGigabyteWmi();
         var hid = new FakeKeyboardHid { IsPresent = keyboardPresent };
+        var screen = new FakePanelBrightness
+        {
+            State = panel ?? new PanelBrightnessState(50, FakePanelBrightness.DenseLadder),
+        };
         var services = new AppServices
         {
+            PanelBrightness = new PanelBrightnessController(screen),
             Profile = profile,
             Wmi = wmi,
             Fans = new FanController(wmi, profile, delay: fanDelay ?? (_ => Task.CompletedTask)),
@@ -71,7 +82,10 @@ public class MainViewModelHotkeyTests : IDisposable
             ExePath = "OpenAorus.Tests.exe",
         };
 
-        var rig = new Rig { Wmi = wmi, Hid = hid, Services = services, Vm = new MainViewModel(services) };
+        var rig = new Rig
+        {
+            Wmi = wmi, Hid = hid, Panel = screen, Services = services, Vm = new MainViewModel(services),
+        };
         services.Fans.Applied += rig.Applied.Add;
         rig.Vm.OverlayRequested += rig.Overlays.Add;
         return rig;
@@ -343,6 +357,193 @@ public class MainViewModelHotkeyTests : IDisposable
         Assert.Equal(BannerKind.Error, rig.Vm.Banner);
         Assert.Contains("SetCurrentFanStep", rig.Vm.BannerText);
         Assert.Equal("Gaming failed", rig.Vm.StatusLine);
+    }
+
+    // ---- the brightness keys, which nothing else on the machine services -------------------
+
+    private static HotkeyAction Brightness(int step, bool overlay = true) =>
+        new(HotkeyOutcome.StepPanelBrightness, null, 0, "", overlay, step);
+
+    [Fact]
+    public async Task A_brightness_key_moves_the_panel_and_the_card_says_where_it_landed()
+    {
+        var rig = Build();
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Up));
+
+        Assert.Equal(new[] { 60 }, rig.Panel.Written);
+        // The policy could not word this card - it does not know what levels the panel accepts -
+        // so the number on it has to come from what the panel actually did.
+        Assert.Equal(new[] { "Display brightness 60 %" }, rig.Overlays);
+    }
+
+    [Fact]
+    public async Task The_down_key_moves_the_other_way()
+    {
+        var rig = Build();
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Down));
+
+        Assert.Equal(new[] { 40 }, rig.Panel.Written);
+        Assert.Equal(new[] { "Display brightness 40 %" }, rig.Overlays);
+    }
+
+    [Fact]
+    public async Task The_card_reports_the_panel_and_never_the_step_that_was_asked_for()
+    {
+        // A sparse panel: asking to go up from 20 lands on 40, not on 30. A card built from the
+        // request rather than from the answer would show a number the screen is not showing.
+        var rig = Build(panel: new PanelBrightnessState(20, new[] { 0, 20, 40, 60, 80, 100 }));
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Up));
+
+        Assert.Equal(new[] { 40 }, rig.Panel.Written);
+        Assert.Equal(new[] { "Display brightness 40 %" }, rig.Overlays);
+    }
+
+    [Fact]
+    public async Task A_brightness_key_writes_nothing_to_the_fans_or_the_keyboard()
+    {
+        var rig = Build();
+        rig.Hid.ClearWritten();
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Up));
+
+        Assert.Empty(rig.Wmi.Calls);
+        Assert.Empty(rig.Hid.Written);
+    }
+
+    [Fact]
+    public async Task On_a_machine_with_no_controllable_panel_the_key_is_silent()
+    {
+        // A desktop, or a lid closed onto an external monitor. Nothing to write, nothing to say -
+        // and above all nothing thrown, because this arrives on a raw-input callback.
+        var rig = Build(panel: null);
+        rig.Panel.State = null;
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Up));
+
+        Assert.Empty(rig.Panel.Written);
+        Assert.Empty(rig.Overlays);
+    }
+
+    [Fact]
+    public async Task A_panel_that_refuses_the_write_draws_nothing()
+    {
+        var rig = Build();
+        rig.Panel.FailNextSet = true;
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Up));
+
+        // The same rule the fan key follows: a card narrating a change the machine did not make
+        // is worse than no card, because the owner then distrusts the ones that are telling the
+        // truth.
+        Assert.Empty(rig.Overlays);
+    }
+
+    [Fact]
+    public async Task At_the_end_of_its_travel_the_card_still_says_where_the_panel_is()
+    {
+        // Unlike a refused write, this is the key working: the panel is at full and stays there.
+        // Windows' own card behaves the same way, and it is what tells the owner the key is not
+        // broken.
+        var rig = Build(panel: new PanelBrightnessState(100, FakePanelBrightness.DenseLadder));
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Up));
+
+        Assert.Empty(rig.Panel.Written);
+        Assert.Equal(new[] { "Display brightness 100 %" }, rig.Overlays);
+    }
+
+    [Fact]
+    public async Task An_owner_who_turned_the_brightness_card_off_still_gets_the_brightness()
+    {
+        var rig = Build();
+
+        await rig.Vm.OnHotkeyAsync(Brightness(BrightnessLadder.Up, overlay: false));
+
+        Assert.Equal(new[] { 60 }, rig.Panel.Written);
+        Assert.Empty(rig.Overlays);
+    }
+
+    [Fact]
+    public async Task A_tap_of_the_brightness_key_moves_the_panel_once_and_not_twice()
+    {
+        // THE WHOLE PATH, and the one that would be wrong in the way the owner notices first.
+        // Every tap puts two reports on the wire - `04 00 00 7E` and then `04 00 00 00` - and if
+        // the release decoded to anything the screen would jump two steps per press.
+        var rig = Build();
+
+        var raw = new FakeHotkeySource();
+        var now = 0L;
+        using var hotkeys = new HotkeyService(
+            raw, new FakeWmiEventSource(), rig.Services.Settings.Hotkeys, () => rig.Services.Settings.Mode,
+            post: w => w(), clock: () => now);
+
+        var running = new List<Task>();
+        hotkeys.ActionRequested += a => running.Add(rig.Vm.OnHotkeyAsync(a));
+        hotkeys.Start();
+
+        raw.Emit(4, 0, 0, 0x7E);   // press
+        raw.Emit(4, 0, 0, 0x00);   // release
+        await Task.WhenAll(running);
+
+        Assert.Equal(new[] { 60 }, rig.Panel.Written);
+        Assert.Equal(new[] { "Display brightness 60 %" }, rig.Overlays);
+    }
+
+    [Fact]
+    public async Task Two_taps_walk_the_panel_two_steps()
+    {
+        // The debouncer throttles by signal and level, so the second tap has to be outside the
+        // window to count - the same rule the fan key lives under.
+        var rig = Build();
+
+        var raw = new FakeHotkeySource();
+        var now = 0L;
+        using var hotkeys = new HotkeyService(
+            raw, new FakeWmiEventSource(), rig.Services.Settings.Hotkeys, () => rig.Services.Settings.Mode,
+            post: w => w(), clock: () => now);
+
+        var running = new List<Task>();
+        hotkeys.ActionRequested += a => running.Add(rig.Vm.OnHotkeyAsync(a));
+        hotkeys.Start();
+
+        raw.Emit(4, 0, 0, 0x7E);
+        raw.Emit(4, 0, 0, 0x00);
+        now += SignalDebouncer.WindowMs;
+        raw.Emit(4, 0, 0, 0x7E);
+        raw.Emit(4, 0, 0, 0x00);
+        await Task.WhenAll(running);
+
+        Assert.Equal(new[] { 60, 70 }, rig.Panel.Written);
+    }
+
+    [Fact]
+    public async Task The_codes_nobody_has_identified_reach_the_view_model_as_nothing()
+    {
+        // 134 and 135, both press conventions. They are written down by the trace and acted on by
+        // nothing; a press of either must not move the panel it happens to be numerically near.
+        var rig = Build();
+
+        var raw = new FakeHotkeySource();
+        using var hotkeys = new HotkeyService(
+            raw, new FakeWmiEventSource(), rig.Services.Settings.Hotkeys, () => rig.Services.Settings.Mode,
+            post: w => w(), clock: () => 0);
+
+        var running = new List<Task>();
+        hotkeys.ActionRequested += a => running.Add(rig.Vm.OnHotkeyAsync(a));
+        hotkeys.Start();
+
+        raw.Emit(4, 0, 1, 0x86);
+        raw.Emit(4, 0, 0, 0x86);
+        raw.Emit(4, 0, 1, 0x87);
+        raw.Emit(4, 0, 0, 0x87);
+        await Task.WhenAll(running);
+
+        Assert.Empty(rig.Panel.Written);
+        Assert.Empty(rig.Overlays);
+        Assert.Empty(rig.Wmi.Calls);
     }
 
     [Fact]

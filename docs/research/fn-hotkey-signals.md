@@ -140,6 +140,33 @@ itself, and because that change does not travel through Windows' own hotkey path
 draws no overlay for it. The rule "never draw for brightness because Windows already does"
 was written from the decompiled behaviour and is **false on this chassis**.
 
+### What was built from this
+
+Acted on rather than merely recorded, in `feat(hotkeys)` after this file was written:
+
+- `HotkeySignal.PanelBrightnessUp` / `PanelBrightnessDown` decode from `04 00 00 7E` and
+  `04 00 00 7D`. The **press only** - the release `04 00 00 00` decodes to nothing, which
+  is what makes one tap one step
+- `OpenAorus.Hardware.Display` sets the brightness through
+  `WmiMonitorBrightnessMethods.WmiSetBrightness` in `root\WMI`, reading the current level
+  and the supported levels from `WmiMonitorBrightness`. Windows' classes, not Gigabyte's,
+  because `GetBrightness` answers `Invalid object` here. It needs no elevation
+- One press moves a tenth of the reported ladder, never less than one of its levels, so a
+  panel reporting all of 0-100 moves ten points and a panel reporting six stops moves one.
+  Nothing is ever written that the panel did not list
+- A machine with no `WmiMonitorBrightness` instance - a desktop, an external monitor - does
+  nothing and says nothing
+- The overlay draws for these two keys, and it is the one overlay that defaults **on**. The
+  rule it appears to break was "do not draw a second card over one Windows already draws",
+  and here there is no first card: see `HotkeySettings.OverlayForPanelBrightness`. The
+  9-byte `DisplayBrightness` report above is still refused, because it means the opposite -
+  that something else already made the change
+
+Still open: **134 and 135**. Nothing decodes them and nothing acts on them, deliberately.
+`HotkeyTrace` writes every report down by its bytes before anything decodes it, so both
+halves of each - `04 00 01 86` and `04 00 00 86`, `04 00 01 87` and `04 00 00 87` - appear
+in the diagnostics dump. Whoever identifies them next should start there.
+
 ### The WMI event channel produced nothing
 
 `events=0` across 108 reports. Either this chassis does not use `GB_WMIACPI_Event` for
