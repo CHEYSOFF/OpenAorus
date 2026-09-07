@@ -313,7 +313,7 @@ public class HotkeyServiceTests
         Assert.Equal(2, trace.ReportCount);
         Assert.Single(actions);
 
-        // Written down by their bytes, so VERIFY 8.2 can read what the keyboard actually sent
+        // Written down by their bytes, so VERIFY 7.2 can read what the keyboard actually sent
         // rather than only that something did.
         var dump = trace.Render();
         Assert.Contains("04 00 00 27", dump, StringComparison.Ordinal);

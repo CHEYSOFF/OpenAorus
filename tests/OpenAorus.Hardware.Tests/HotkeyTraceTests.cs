@@ -11,7 +11,7 @@ namespace OpenAorus.Hardware.Tests;
 /// <see cref="RawInputDecoder"/> is inverted, every real report is rejected outright and the
 /// bench sees nothing happen - which is indistinguishable from "this chassis emits no such
 /// reports", an open question in the research. A report that arrives and decodes to nothing has
-/// to be observable somewhere, or VERIFY 8.2 cannot tell those two failures apart.
+/// to be observable somewhere, or VERIFY 7.2 cannot tell those two failures apart.
 /// </para>
 /// <para>
 /// It is also the flood control. Both recorders run on callbacks that fire regardless of focus,

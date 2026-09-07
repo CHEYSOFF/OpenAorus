@@ -29,7 +29,7 @@ does not have that problem.
 dotnet run --project src/OpenAorus.App -- --dump
 ```
 
-- [ ] The output starts with `OpenAorus 0.2.0 diagnostics` and a model line reading
+- [ ] The output starts with `OpenAorus 0.3.0 diagnostics` and a model line reading
       `Model: AORUS 17G KD (Tested, DutyMax=229, Fans=2)`
 - [ ] `getCpuTemp` reports a plausible temperature in °C
 - [ ] `GetCPUFanDuty` and `GetGPUFanDuty` are between 0 and 229

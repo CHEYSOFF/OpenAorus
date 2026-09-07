@@ -8,7 +8,7 @@ namespace OpenAorus.Hardware.Tests;
 /// <remarks>
 /// Two things here are readings of Gigabyte's decompiled code rather than observations: the
 /// property is named <c>Data</c>, and its value is an integer. Nobody has seen one of these events
-/// on this chassis. The tests pin both readings and pin the refusal to guess past them; VERIFY 8.1
+/// on this chassis. The tests pin both readings and pin the refusal to guess past them; VERIFY 7.1
 /// is what settles whether the subscription delivers anything at all.
 /// </remarks>
 public class WmiEventDecoderTests
@@ -138,7 +138,7 @@ public class WmiEventDecoderTests
     public void A_value_shaped_like_nothing_the_research_describes_decodes_to_nothing()
     {
         // "202" as text and 202.0 as a real would both convert to 202, and both would mean the
-        // property is not the shape this app assumed. That belongs in VERIFY 8.1 as "the
+        // property is not the shape this app assumed. That belongs in VERIFY 7.1 as "the
         // touchpad key does nothing", not papered over by a coercion nobody has justified.
         Assert.Null(WmiEventDecoder.Decode("202"));
         Assert.Null(WmiEventDecoder.Decode((object)202.0));

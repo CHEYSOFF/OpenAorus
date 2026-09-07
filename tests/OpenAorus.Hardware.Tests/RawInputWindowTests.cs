@@ -17,7 +17,7 @@ namespace OpenAorus.Hardware.Tests;
 /// <para>
 /// Everything else in <see cref="RawInputWindow"/> - the registration call itself, the
 /// message-only window, the window procedure - needs a desktop and a keyboard. It is OWNER
-/// VERIFY work: VERIFY 8.1 and 8.2. What is left testable here is the usage table, the native
+/// VERIFY work: VERIFY 7.1 and 7.2. What is left testable here is the usage table, the native
 /// array built from it, the documented constants, the allocation bound, and the promise that a
 /// failure to start is quiet.
 /// </para>
@@ -27,7 +27,7 @@ namespace OpenAorus.Hardware.Tests;
 /// the very next line to be meaningful - has no coverage here and can get none. Reaching it needs
 /// a real window handle, which needs a desktop and an STA thread, so no test in this project can
 /// make the call happen at all, let alone make it fail. It joins the registration call, the
-/// window and the window procedure on the list VERIFY 8.1 and 8.2 exist to work through. What
+/// window and the window procedure on the list VERIFY 7.1 and 7.2 exist to work through. What
 /// this file can pin is only that the failure is quiet and says where it happened.
 /// </para>
 /// </remarks>
@@ -208,7 +208,7 @@ public class RawInputWindowTests
 /// The WMI half. Reaching its subscription needs an elevated process and a Gigabyte provider, so
 /// what is testable is only that the thing can be built and torn down without touching either.
 /// </summary>
-/// <remarks>Its live behaviour is OWNER VERIFY work: VERIFY 8.1 is what says whether the
+/// <remarks>Its live behaviour is OWNER VERIFY work: VERIFY 7.1 is what says whether the
 /// subscription is accepted and whether the value really arrives under a property named
 /// <c>Data</c>.</remarks>
 public class WmiEventListenerTests

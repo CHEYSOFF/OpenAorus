@@ -37,7 +37,7 @@ namespace OpenAorus.App.Views;
 /// <para>
 /// Full-screen games: a topmost, never-activated window either draws over one or is covered by
 /// it, depending on how the game presents. Neither costs the game its focus, which is the part
-/// that would matter - <c>WS_EX_NOACTIVATE</c> is what guarantees it. VERIFY 8 records which of
+/// that would matter - <c>WS_EX_NOACTIVATE</c> is what guarantees it. VERIFY 7.7 records which of
 /// the two this chassis does.
 /// </para>
 /// </remarks>

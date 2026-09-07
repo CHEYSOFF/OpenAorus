@@ -6,7 +6,7 @@ namespace OpenAorus.Hardware.Tests;
 /// <remarks>
 /// The window is a chosen number, not a measured one, so these tests pin behaviour rather than
 /// timing: what a held key costs, what two real taps must still do, and what a clock that misbehaves
-/// must not be able to do. VERIFY 8.4 is what measures the number itself.
+/// must not be able to do. VERIFY 7.4 is what measures the number itself.
 /// </remarks>
 public class SignalDebouncerTests
 {
@@ -253,7 +253,7 @@ public class SignalDebouncerTests
     {
         // Pinned so that changing it is a decision rather than a drive-by. It sits above the gap
         // between two channels describing one press and below a deliberate double tap; neither
-        // bound has been measured, which is what VERIFY 8.4 is for.
+        // bound has been measured, which is what VERIFY 7.4 is for.
         Assert.Equal(250, SignalDebouncer.WindowMs);
     }
 }
