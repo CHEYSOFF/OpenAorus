@@ -1,0 +1,50 @@
+<Window x:Class="OpenAorus.App.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowActivated="False" ShowInTaskbar="False" Topmost="True"
+        ResizeMode="NoResize" SizeToContent="WidthAndHeight"
+        Focusable="False" IsHitTestVisible="False"
+        WindowStartupLocation="Manual" Left="-32000" Top="-32000"
+        UseLayoutRounding="True">
+    <!-- Off screen until the first ShowNotice has measured the card and placed it: a Window with
+         no HWND has had no layout pass, so its size is only knowable after Show, and starting at
+         0,0 would put one frame of the card in the corner of the primary monitor.
+
+         The three properties that matter most are not here at all - WS_EX_TRANSPARENT,
+         WS_EX_NOACTIVATE and WS_EX_TOOLWINDOW go on in SourceInitialized, because WPF has no
+         property for any of them. See the code-behind. -->
+    <Window.Resources>
+        <!-- Bigger and heavier than a card title: this is read at a glance, from across the
+             screen, over whatever the owner was looking at. -->
+        <Style x:Key="OverlayNotice" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="14.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <!-- The app's card, floated: the same fill and radius, with the ControlBorder edge rather
+         than the CardBorder one because this one has to hold its shape against a game rather
+         than against the window ground. MinWidth is the longest thing the policy can say
+         ("Keyboard backlight 100 %"), so a run of presses moves the text inside a card that
+         stays put instead of re-centring a differently sized card each time. -->
+    <Border Background="{StaticResource Card}" BorderBrush="{StaticResource ControlBorder}"
+            BorderThickness="1" CornerRadius="10" Padding="20,12,20,11"
+            MinWidth="228" SnapsToDevicePixels="True">
+        <StackPanel>
+            <!-- A live region, so the one thing this card does - saying what just happened - also
+                 happens for someone who cannot see it. WPF does not raise the event on its own;
+                 the code-behind does, once per notice. -->
+            <TextBlock x:Name="NoticeText" Style="{StaticResource OverlayNotice}"
+                       AutomationProperties.LiveSetting="Polite"/>
+            <!-- One accent mark, the width of a word, under the line. The same job the rule
+                 under a nav tab does: it says which app drew this, and it is the only colour
+                 on the card. -->
+            <Border Height="2" Width="26" CornerRadius="1" Margin="0,8,0,0"
+                    HorizontalAlignment="Center" Background="{StaticResource Accent}"/>
+        </StackPanel>
+    </Border>
+</Window>

@@ -21,7 +21,7 @@
              to, everything in the dialog is disabled, and a close button that went with it
              would leave the owner in a modal dialog with no way out of it. -->
         <views:CaptionBar DockPanel.Dock="Top" CanMinimise="False"/>
-        <StackPanel Margin="16,8,16,14" IsEnabled="{Binding CanWrite}">
+        <StackPanel DockPanel.Dock="Top" Margin="16,8,16,0" IsEnabled="{Binding CanWrite}">
             <Border Style="{StaticResource CardStyle}">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Content="Toggle" VerticalAlignment="Center" Margin="12,0,0,0"
@@ -70,6 +70,64 @@
                     </UniformGrid>
                 </StackPanel>
             </Border>
+        </StackPanel>
+
+        <!-- A sibling of the CanWrite panel above, never a child of it. Touchpad, Wi-Fi and
+             keyboard backlight need no WMI at all, so gating this card would take three working
+             features away on an unrecognised model to protect the one - fan cycling - that does
+             not work there, and which the fan controller already refuses with a message of its
+             own. HotkeySettingsUiTests pins the arrangement, because "outside the gate" is a
+             fact about where the markup sits and nothing in it says so.
+
+             The settings path and the status line move out of the gate with it: they are text
+             the owner reads, and the hotkey card's own Save writes to that status line - a
+             message about a card that works, greyed out because a different card does not, would
+             be the gate reaching this one by the back door. -->
+        <StackPanel Margin="16,0,16,14">
+            <Border Style="{StaticResource CardStyle}" DataContext="{Binding Hotkeys}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Fn hotkeys"/>
+                    <CheckBox Content="Respond to the Fn row" IsChecked="{Binding HotkeysEnabled}"/>
+                    <TextBlock Style="{StaticResource Body}" Margin="25,4,0,0"
+                               Text="Cycles the fan mode, follows the keyboard backlight, and reports the touchpad and Wi-Fi keys. Volume and display brightness are left to Windows, which already draws an overlay for both."/>
+
+                    <!-- Disabled rather than hidden while the Fn row is off, so the owner can see
+                         what turning it back on would give them. The heading dims with the four
+                         switches it heads; the Save button below stays live, because switching
+                         the Fn row off is itself a thing that has to be saveable. -->
+                    <StackPanel IsEnabled="{Binding HotkeysEnabled}">
+                        <TextBlock Style="{StaticResource GroupLabel}" Text="Show an overlay for" Margin="2,14,0,8"/>
+                        <UniformGrid Columns="2">
+                            <CheckBox Content="Fan mode" Margin="0,0,8,9"
+                                      IsChecked="{Binding OverlayForFanMode}"/>
+                            <CheckBox Content="Keyboard backlight" Margin="0,0,0,9"
+                                      IsChecked="{Binding OverlayForBacklight}"/>
+                            <CheckBox Content="Touchpad" Margin="0,0,8,0"
+                                      IsChecked="{Binding OverlayForTouchpad}"/>
+                            <CheckBox Content="Wi-Fi" IsChecked="{Binding OverlayForWifi}"/>
+                        </UniformGrid>
+                    </StackPanel>
+
+                    <!-- The same three-column footing as the sensor card above, so the two Save
+                         buttons land in the same place. -->
+                    <!-- The same three-column footing as the sensor card above, so the two Save
+                         buttons land in the same place. -->
+                    <UniformGrid Columns="3" Margin="0,14,0,0">
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource Muted}" Text="Overlay seconds" Margin="0,0,0,4"/>
+                            <TextBox Text="{Binding OverlaySeconds}"
+                                     AutomationProperties.Name="Overlay seconds"/>
+                        </StackPanel>
+                        <Border/>
+                        <!-- Named, because there are now two buttons in this dialog reading
+                             "Save" and a screen reader would otherwise offer the same word
+                             twice with nothing to tell them apart. -->
+                        <Button Content="Save" VerticalAlignment="Bottom" Command="{Binding SaveCommand}"
+                                AutomationProperties.Name="Save hotkey settings"/>
+                    </UniformGrid>
+                </StackPanel>
+            </Border>
+
             <TextBlock Style="{StaticResource Muted}" Text="{Binding SettingsPath}" TextTrimming="CharacterEllipsis"
                        ToolTip="{Binding SettingsPath}" Margin="2,0,0,0"/>
             <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource Fg}" Text="{Binding Message}" Margin="2,8,0,0"/>

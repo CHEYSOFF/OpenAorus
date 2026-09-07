@@ -19,9 +19,14 @@ public partial class SettingsViewModel : ObservableObject
 
     public string SettingsPath => _s.Store.Path;
 
+    /// <summary>The Fn hotkey card, which is the one part of this dialog outside
+    /// <see cref="CanWrite"/> - see <see cref="HotkeysViewModel"/> for why.</summary>
+    public HotkeysViewModel Hotkeys { get; }
+
     public SettingsViewModel(AppServices s)
     {
         _s = s;
+        Hotkeys = new HotkeysViewModel(s, text => Message = text);
         _pollVisibleMs = s.Settings.PollIntervalVisibleMs;
         _pollHiddenMs = s.Settings.PollIntervalHiddenMs;
         _gccTakenOver = s.Settings.Takeover is not null;
