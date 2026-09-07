@@ -97,19 +97,28 @@ something; only that one checks that what it *did* accept still cools the machin
       touches the UI, so this is the check that the guard lives in the domain and not in
       the window
 - [ ] Load the machine until the CPU passes 90 °C in a mode whose duty is under 80 % -
-      Quiet under a stress test is the usual way there. Within a second or two the fans
-      go to full, the mode selection moves to Turbo, and the banner reads
-      `Fans forced to full: CPU reached <n> °C`. As long as nothing else touches the fans
-      it must say that **once**: watch for a further half minute and confirm the fans are
-      not being re-driven every second, and that the banner does not clear itself while
-      the machine is still hot
-- [ ] Keep the load on, and while the fans are still forced to full click **Quiet**. The
-      fans drop, and then within a few seconds - as soon as the lagging duty read-back
-      has come down with them - the watchdog forces them back to full and says so again.
-      The mode you picked replaced the Turbo it had applied, which is the whole reason it
-      was holding off. This stands in for the case that is awkward to stage by hand: on a
-      resume the saved mode is re-applied the same way, and a machine that stayed hot
-      across the sleep would otherwise come back on a slow mode with nothing watching it
+      Quiet under a stress test is the usual way there. Within a second or two the mode
+      selection moves to **Gaming** and the banner reads `Fans raised: CPU reached <n> °C`.
+      That is the first stage: the controller's own aggressive curve, which still tracks
+      the temperature
+- [ ] Watch what happens next, and note which of the two it is. If Gaming brings the CPU
+      fan above 80 %, nothing more happens - the machine stays on Gaming, and as the load
+      comes off the fans ease down on their own. If it does not, then a poll or two later
+      the mode moves to **Turbo** and the banner reads `Fans forced to maximum: CPU is
+      still at <n> °C`. Either outcome is correct; the machine's own curve decides which
+- [ ] Whichever it was, that must be the **end** of it. Watch for a further half minute
+      with the load still on and confirm the fans are not being re-driven every second,
+      the mode selection is not flapping between Gaming and Turbo, and the banner does not
+      clear itself while the machine is still hot. At most two write sequences per hot
+      spell reach the controller
+- [ ] Keep the load on and click **Quiet** while the watchdog still has the machine. The
+      fans drop, and then within a few seconds - as soon as the lagging duty read-back has
+      come down with them - the watchdog starts again from Gaming and says so. The mode you
+      picked replaced what it had applied, which is the whole reason it was holding off,
+      and the next emergency is a new one that starts at the gentler stage. This stands in
+      for the case that is awkward to stage by hand: on a resume the saved mode is
+      re-applied the same way, and a machine that stayed hot across the sleep would
+      otherwise come back on a slow mode with nothing watching it
 - [ ] **The one that matters.** Set a custom curve you would actually use, click Apply,
       quit the app from the tray, and then load the machine with nothing of OpenAorus
       running. The fans must ramp as the temperature climbs. If they sit at the low end
@@ -633,6 +642,11 @@ symptom shows up above.
   17G KD's own thermal management already has the fans up well before that, the watchdog
   will simply never fire, which section 3.1 asks you to confirm by making it fire on
   purpose.
+- **What the controller's Gaming curve actually does at 90 °C.** The watchdog's first
+  stage hands the machine to that curve, and nothing in the recovered protocol says where
+  it runs. That is deliberately not assumed: the escalation to Turbo is decided by the
+  measured CPU fan duty on a later poll, not by a belief about the curve. The second of
+  the section 3.1 steps above is what tells you which way this machine goes.
 
 ## If something fails
 

@@ -17,8 +17,8 @@ namespace OpenAorus.Hardware.Tests;
 /// <remarks>
 /// <para>
 /// The saved mode and the running mode are not the same thing, and they come apart exactly when
-/// it matters most: the thermal watchdog forces Turbo without writing that to settings.json - on
-/// purpose, so a forced Turbo is not what the machine boots into next time - so
+/// it matters most: the thermal watchdog overrides the fans without writing that to settings.json
+/// - on purpose, so a forced mode is not what the machine boots into next time - so
 /// <c>settings.Mode</c> still says whatever the owner last chose while the fans are at full.
 /// </para>
 /// <para>
@@ -66,10 +66,17 @@ public class AppServicesHotkeyModeTests : IDisposable
     }
 
     [Fact]
-    public async Task A_forced_turbo_moves_the_mode_the_fan_key_reads()
+    public async Task Every_stage_the_watchdog_forces_moves_the_mode_the_fan_key_reads()
     {
         var (vm, settings, cursor) = Make(saved: FanMode.Quiet);
         Assert.Equal(FanMode.Quiet, cursor());
+
+        await vm.OnSensorPollAsync(Hot());
+
+        // The first stage is as much of an override as the last one, so the cursor has to move
+        // for it too - a press read off the saved Quiet here would be just as wrong.
+        Assert.Equal(FanSafety.WatchdogFirstStageMode, vm.SelectedMode);
+        Assert.Equal(FanSafety.WatchdogFirstStageMode, cursor());
 
         await vm.OnSensorPollAsync(Hot());
 
@@ -85,7 +92,8 @@ public class AppServicesHotkeyModeTests : IDisposable
     public async Task A_press_on_a_machine_the_watchdog_took_over_cycles_from_full()
     {
         var (vm, settings, cursor) = Make(saved: FanMode.Quiet);
-        await vm.OnSensorPollAsync(Hot());
+        await vm.OnSensorPollAsync(Hot());   // first stage: the aggressive curve
+        await vm.OnSensorPollAsync(Hot());   // it did not lift the fans, so: full
 
         // The whole path a real press takes, over the cursor the app hands the service.
         var raw = new FakeHotkeySource();

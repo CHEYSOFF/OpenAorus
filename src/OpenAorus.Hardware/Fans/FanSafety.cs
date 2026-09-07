@@ -46,7 +46,7 @@ public static class FanSafety
     /// table that stops early hands the danger zone back to whatever duty it was last told.</remarks>
     public const int MinTopTemperature = 85;
 
-    /// <summary>CPU temperature at which the running app forces Turbo, in °C.</summary>
+    /// <summary>CPU temperature at which the running app takes the fans off the owner, in °C.</summary>
     public const int WatchdogTriggerTemperature = 90;
 
     /// <summary>The duty below which the watchdog considers the fans to be doing too little, in percent.</summary>
@@ -54,6 +54,27 @@ public static class FanSafety
 
     /// <summary>CPU temperature the machine must fall back below before the watchdog can fire again, in °C.</summary>
     public const int WatchdogRearmTemperature = 80;
+
+    /// <summary>The mode the watchdog puts the fans on the first time it fires.</summary>
+    /// <remarks>
+    /// The controller's own aggressive automatic curve. It is the first answer rather than the
+    /// only one because it keeps reading the temperature: it lifts the fans while the machine is
+    /// hot and lets them back down as it cools, without anything here having to decide when.
+    /// Nothing assumes what that curve actually does at <see cref="WatchdogTriggerTemperature"/> °C
+    /// - it is an unverified part of the recovered protocol - which is why a second stage exists
+    /// and why the measured duty, not a guess about the curve, is what reaches for it.
+    /// </remarks>
+    public const FanMode WatchdogFirstStageMode = FanMode.Gaming;
+
+    /// <summary>The mode the watchdog escalates to when the first stage did not lift the duty.</summary>
+    /// <remarks>
+    /// Turbo pins both fans at the profile's DutyMax and, being a fixed-duty mode, stops
+    /// responding to temperature entirely - it runs at full until something else changes the mode,
+    /// including long after the machine is cold. That cost is worth paying only once the measured
+    /// duty has said the gentler answer did not work, so this is the last resort and nothing
+    /// escalates past it.
+    /// </remarks>
+    public const FanMode WatchdogLastResortMode = FanMode.Turbo;
 
     /// <summary>Coldest temperature reading treated as real, in °C. A failed read surfaces as 0.</summary>
     public const int MinPlausibleTemperature = 1;

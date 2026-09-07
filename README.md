@@ -245,8 +245,13 @@ the controller ramps it as things heat up. The floors are checked wherever a
 setting reaches the hardware, including `--apply`, and an old or hand-edited
 `settings.json` that breaks them is repaired on load with a notice saying so.
 While the app is running it also watches the CPU: at 90 °C with the fans under
-80 % it forces Turbo once and tells you, and leaves the machine there rather
-than quietly putting it back.
+80 % it takes them off you, in two stages. First it puts them on Gaming, the
+controller's own aggressive automatic curve, which lifts the fans and then eases
+them back down as the machine cools. If a later poll still reads 90 °C with the
+duty still under 80 %, it escalates once more to Turbo and leaves the machine
+there rather than quietly putting it back - Turbo is a fixed duty and stops
+reading the temperature at all, which is why it is the last resort and not the
+first answer. Each stage tells you which one it was.
 
 ## Docs
 

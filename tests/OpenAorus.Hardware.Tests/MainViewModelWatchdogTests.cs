@@ -52,35 +52,102 @@ public class MainViewModelWatchdogTests : IDisposable
     private static SensorSnapshot Poll(int cpu, int duty, bool ok = true) =>
         new(cpu, 50, 3000, 3000, duty, duty, ok, ok ? null : "getCpuTemp: failed (fake)");
 
+    /// <summary>Whether the Gaming write sequence went out - the aggressive automatic curve is the
+    /// one mode that sets SetAutoFanStatus to 1.</summary>
+    private static bool RaisedFans(FakeGigabyteWmi wmi) =>
+        wmi.Calls.Any(c => c.Method == "SetAutoFanStatus" && c.Data == 1);
+
+    /// <summary>Whether the Turbo write sequence went out - fans pinned at the profile's DutyMax
+    /// with SetFixedFanStatus latched.</summary>
+    private static bool PinnedFansAtMaximum(FakeGigabyteWmi wmi) =>
+        wmi.Calls.Any(c => c.Method == "SetFixedFanSpeed" && c.Data == 229)
+        && wmi.Calls.Any(c => c.Method == "SetFixedFanStatus" && c.Data == 1);
+
     [Fact]
-    public async Task A_cpu_at_the_trigger_with_slow_fans_is_pinned_to_full_and_the_owner_is_told()
+    public async Task A_cpu_at_the_trigger_with_slow_fans_is_first_put_on_the_aggressive_curve()
     {
         var (vm, wmi, _) = Make();
 
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
 
-        Assert.Contains(wmi.Calls, c => c.Method == "SetFixedFanSpeed" && c.Data == 229);
-        Assert.Contains(wmi.Calls, c => c.Method == "SetFixedFanStatus" && c.Data == 1);
+        // Gaming, not Turbo: it still tracks temperature and backs off as the machine cools,
+        // where Turbo is a fixed duty that stops responding to the sensor entirely.
+        Assert.True(RaisedFans(wmi));
+        Assert.False(PinnedFansAtMaximum(wmi));
         Assert.Equal(BannerKind.Warning, vm.Banner);
-        Assert.Contains("Fans forced to full", vm.BannerText);
+        Assert.Contains("Fans raised", vm.BannerText);
         Assert.Contains("92", vm.BannerText);
-        // The window has to agree with the machine: it really is in Turbo now.
-        Assert.Equal(FanMode.Turbo, vm.SelectedMode);
+        // The window has to agree with the machine: it really is in Gaming now.
+        Assert.Equal(FanMode.Gaming, vm.SelectedMode);
     }
 
     [Fact]
-    public async Task It_does_not_re_apply_turbo_on_every_poll_while_the_machine_stays_hot()
+    public async Task A_machine_the_aggressive_curve_did_not_cool_is_then_pinned_at_maximum()
     {
         var (vm, wmi, _) = Make();
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
         wmi.Calls.Clear();
 
-        // The duty read-back lags the write by a second or two, so these look just like the
-        // poll that fired.
+        // Gaming has landed and the CPU fan is still reading below the duty floor, so whatever
+        // that curve does at 90 °C, it is not doing it here. Last resort.
         await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
-        await vm.OnSensorPollAsync(Poll(cpu: 97, duty: 10));
+
+        Assert.True(PinnedFansAtMaximum(wmi));
+        Assert.Equal(FanMode.Turbo, vm.SelectedMode);
+        Assert.Equal(BannerKind.Warning, vm.Banner);
+        Assert.Contains("Fans forced to maximum", vm.BannerText);
+        Assert.Contains("95", vm.BannerText);
+    }
+
+    [Fact]
+    public async Task The_two_stages_say_different_things()
+    {
+        var (vm, _, _) = Make();
+
+        await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
+        var raised = vm.BannerText;
+        var raisedStatus = vm.StatusLine;
+
+        await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
+
+        // "The fans were turned up" and "the fans are stuck at maximum until you pick a mode" are
+        // different pieces of news, and the owner has to be able to tell which one they got.
+        Assert.NotEqual(raised, vm.BannerText);
+        Assert.NotEqual(raisedStatus, vm.StatusLine);
+        Assert.DoesNotContain("maximum", raised);
+        Assert.Contains("maximum", vm.BannerText);
+    }
+
+    [Fact]
+    public async Task A_machine_the_aggressive_curve_did_cool_is_left_on_it()
+    {
+        var (vm, wmi, _) = Make();
+        await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
+        wmi.Calls.Clear();
+
+        // Still hot, but the fans are now doing the work. Pinning them at maximum would buy
+        // nothing and cost the temperature tracking.
+        await vm.OnSensorPollAsync(Poll(cpu: 95, duty: FanSafety.WatchdogDutyFloor));
+        await vm.OnSensorPollAsync(Poll(cpu: 97, duty: 100));
 
         Assert.Empty(wmi.Calls);
+        Assert.Equal(FanMode.Gaming, vm.SelectedMode);
+    }
+
+    [Fact]
+    public async Task It_does_not_re_apply_a_mode_on_every_poll_while_the_machine_stays_hot()
+    {
+        var (vm, wmi, _) = Make();
+
+        // Twenty seconds of a machine at 95 °C whose fans never come up. The two stages are the
+        // only write sequences allowed out in that time - anything more is the per-second
+        // re-drive the latch exists to prevent.
+        for (var poll = 0; poll < 20; poll++)
+            await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
+
+        Assert.Equal(1, wmi.Calls.Count(c => c.Method == "SetAutoFanStatus" && c.Data == 1));
+        Assert.Equal(1, wmi.Calls.Count(c => c.Method == "SetFixedFanSpeed" && c.Data == 229));
+        Assert.Equal(FanMode.Turbo, vm.SelectedMode);
     }
 
     [Fact]
@@ -88,12 +155,13 @@ public class MainViewModelWatchdogTests : IDisposable
     {
         var (vm, _, _) = Make();
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
+        await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
 
         await vm.OnSensorPollAsync(Poll(cpu: 70, duty: 100));
         await vm.OnSensorPollAsync(Poll(cpu: 55, duty: 40));
 
         // Nothing was reverted, so nothing may quietly stop saying so either.
-        Assert.Contains("Fans forced to full", vm.BannerText);
+        Assert.Contains("Fans forced to maximum", vm.BannerText);
     }
 
     [Fact]
@@ -104,7 +172,8 @@ public class MainViewModelWatchdogTests : IDisposable
         await vm.OnSensorPollAsync(Poll(cpu: 0, duty: 0, ok: false));
 
         Assert.Empty(wmi.Calls);
-        Assert.DoesNotContain("forced to full", vm.BannerText);
+        Assert.DoesNotContain("Fans raised", vm.BannerText);
+        Assert.DoesNotContain("forced to maximum", vm.BannerText);
     }
 
     [Fact]
@@ -140,20 +209,33 @@ public class MainViewModelWatchdogTests : IDisposable
         await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 0));
 
         Assert.Empty(wmi.Calls);
-        Assert.DoesNotContain("forced to full", vm.BannerText);
+        Assert.DoesNotContain("Fans raised", vm.BannerText);
+        Assert.DoesNotContain("forced to maximum", vm.BannerText);
         Assert.Equal(BannerKind.Error, vm.Banner);   // still the read-only model banner
     }
 
     [Fact]
-    public async Task A_failed_turbo_write_is_reported_rather_than_swallowed()
+    public async Task A_failed_write_is_reported_rather_than_swallowed()
     {
         var (vm, wmi, _) = Make();
-        wmi.FailOn.Add("SetFixedFanSpeed");
+        wmi.FailOn.Add("SetAutoFanStatus");   // in every sequence either stage would send
 
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
 
         Assert.Equal(BannerKind.Error, vm.Banner);
-        Assert.Contains("SetFixedFanSpeed", vm.BannerText);
+        Assert.Contains("SetAutoFanStatus", vm.BannerText);
+    }
+
+    [Fact]
+    public async Task A_failed_stage_leaves_the_window_showing_the_mode_the_machine_is_still_in()
+    {
+        var (vm, wmi, _) = Make();
+        wmi.FailOn.Add("SetAutoFanStatus");
+        var before = vm.SelectedMode;
+
+        await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
+
+        Assert.Equal(before, vm.SelectedMode);
     }
 
     [Fact]
@@ -162,23 +244,27 @@ public class MainViewModelWatchdogTests : IDisposable
         var (vm, wmi, services) = Make();
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
 
-        // What a resume does: the owner's saved mode goes back on, undoing the forced Turbo. The
-        // CPU never dropped below the re-arm point across the sleep, so the temperature rule alone
-        // would leave the machine back on a slow mode, still hot, with the guard latched shut.
+        // What a resume does: the owner's saved mode goes back on, undoing what the watchdog
+        // forced. The CPU never dropped below the re-arm point across the sleep, so the
+        // temperature rule alone would leave the machine back on a slow mode, still hot, with the
+        // guard latched shut.
         await services.ApplySavedAsync();
         wmi.Calls.Clear();
 
         await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
 
-        Assert.Contains(wmi.Calls, c => c.Method == "SetFixedFanSpeed" && c.Data == 229);
-        Assert.Equal(FanMode.Turbo, vm.SelectedMode);
+        // Re-armed, and re-armed to the beginning: the escalation starts over from the stage that
+        // still tracks temperature, not from the one that stopped.
+        Assert.True(RaisedFans(wmi));
+        Assert.False(PinnedFansAtMaximum(wmi));
+        Assert.Equal(FanMode.Gaming, vm.SelectedMode);
     }
 
     [Fact]
-    public async Task A_turbo_write_that_failed_is_tried_again_on_the_next_poll()
+    public async Task A_write_that_failed_is_tried_again_on_the_next_poll()
     {
         var (vm, wmi, _) = Make();
-        wmi.FailOn.Add("SetFixedFanSpeed");
+        wmi.FailOn.Add("SetAutoFanStatus");
 
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
         wmi.Calls.Clear();
@@ -186,22 +272,24 @@ public class MainViewModelWatchdogTests : IDisposable
 
         await vm.OnSensorPollAsync(Poll(cpu: 93, duty: 10));
 
-        Assert.Contains(wmi.Calls, c => c.Method == "SetFixedFanStatus" && c.Data == 1);
-        Assert.Contains("Fans forced to full", vm.BannerText);
+        // The first stage never reached the controller, so the retry is the first stage again -
+        // there is nothing yet to escalate away from.
+        Assert.True(RaisedFans(wmi));
+        Assert.Contains("Fans raised", vm.BannerText);
     }
 
     [Fact]
-    public async Task A_turbo_write_that_keeps_failing_is_retried_without_a_fresh_notice_each_poll()
+    public async Task A_write_that_keeps_failing_is_retried_without_a_fresh_notice_each_poll()
     {
         var (vm, wmi, _) = Make();
-        wmi.FailOn.Add("SetFixedFanSpeed");
+        wmi.FailOn.Add("SetAutoFanStatus");
 
         await vm.OnSensorPollAsync(Poll(cpu: 92, duty: 10));
         await vm.OnSensorPollAsync(Poll(cpu: 95, duty: 10));
         await vm.OnSensorPollAsync(Poll(cpu: 97, duty: 10));
 
         // Every poll retries - that is the point of not latching on a failure ...
-        Assert.Equal(3, wmi.Calls.Count(c => c.Method == "SetFixedFanSpeed"));
+        Assert.Equal(3, wmi.Calls.Count(c => c.Method == "SetAutoFanStatus"));
         // ... but the owner is told once. The banner still carries the first report, not a
         // rewrite from a second later naming a temperature one degree different.
         Assert.Equal(BannerKind.Error, vm.Banner);

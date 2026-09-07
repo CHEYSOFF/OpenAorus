@@ -16,7 +16,7 @@ public partial class MainViewModel : ObservableObject
     private readonly BannerState _bannerState;
     private readonly FanWatchdog _watchdog = new();
 
-    /// <summary>The forced-Turbo failure the owner has already been shown, so a write that keeps
+    /// <summary>The watchdog write failure the owner has already been shown, so a write that keeps
     /// failing is retried every poll without being announced again every poll.</summary>
     private string? _reportedWatchdogError;
 
@@ -217,17 +217,28 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Forces Turbo when the CPU has reached <see cref="FanSafety.WatchdogTriggerTemperature"/> °C
-    /// with the fans doing too little about it.
+    /// Overrides the fans when the CPU has reached <see cref="FanSafety.WatchdogTriggerTemperature"/>
+    /// °C with the fans doing too little about it, one escalation stage per call.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The CPU fan's duty is the one read, because the CPU's temperature is what triggered this;
     /// on a one-fan profile the second reading is always 0 and would fire this constantly.
-    ///
-    /// Nothing is reverted afterwards and nothing is written back to settings.json. Leaving the
-    /// machine at full and saying so is the safe end of that choice - the owner can pick another
-    /// mode the moment they see the notice - whereas dropping back out of Turbo on a timer would
-    /// mean the app silently undoing the one thing it did to protect the hardware.
+    /// </para>
+    /// <para>
+    /// Which mode goes out is <see cref="FanWatchdog"/>'s to say, and it says it twice: the
+    /// aggressive automatic curve first, then - only if a later poll's measured duty says that
+    /// curve did not lift the fans - the fixed maximum. This method's part is to write it and to
+    /// tell the owner which of the two just happened, because "the fans were turned up" and "the
+    /// fans are pinned at maximum until you pick a mode yourself" are different pieces of news.
+    /// </para>
+    /// <para>
+    /// Nothing is reverted afterwards and nothing is written back to settings.json. The first
+    /// stage needs no reverting - it is an automatic curve and comes down on its own - and leaving
+    /// the machine at maximum and saying so is the safe end of the second: the owner can pick
+    /// another mode the moment they see the notice, whereas dropping back out of it on a timer
+    /// would mean the app silently undoing the one thing it did to protect the hardware.
+    /// </para>
     /// </remarks>
     private async Task RunWatchdogAsync(SensorSnapshot snap)
     {
@@ -236,19 +247,35 @@ public partial class MainViewModel : ObservableObject
         if (!CanWrite) return;
         if (!_watchdog.Observe(snap.CpuTemp, snap.Fan1DutyPercent)) return;
 
+        var stage = _watchdog.Stage;
+        var mode = _watchdog.ModeToApply!.Value;   // non-null on the poll Observe fires for
+
         // Not gated on IsBusy: FanController serializes its own sequences, and an emergency that
         // arrives during the owner's mode click has to be the one that lands last, not the one
         // that gets dropped.
-        var r = await _s.Fans.ApplyAsync(FanMode.Turbo, FixedPercent, _s.Settings.ToCurve());
-        _watchdog.NoteForcedTurbo(r.Success);
+        var r = await _s.Fans.ApplyAsync(mode, FixedPercent, _s.Settings.ToCurve());
+        _watchdog.NoteForcedMode(r.Success);
         if (r.Success)
         {
             _reportedWatchdogError = null;
-            SelectedMode = FanMode.Turbo;
-            StatusLine = $"Fans forced to full at {snap.CpuTemp} °C";
-            SetBanner(BannerKind.Warning,
-                $"Fans forced to full: CPU reached {snap.CpuTemp} °C. They have been left there - " +
-                "pick a fan mode yourself once the machine has cooled down.");
+            SelectedMode = mode;
+            if (stage == WatchdogStage.Raised)
+            {
+                StatusLine = $"Fans raised to {mode} at {snap.CpuTemp} °C";
+                SetBanner(BannerKind.Warning,
+                    $"Fans raised: CPU reached {snap.CpuTemp} °C, so they have been put on {mode}, " +
+                    "which follows the temperature and will ease off as the machine cools. If that " +
+                    "does not bring them up, they will be pinned at full speed next.");
+            }
+            else
+            {
+                StatusLine = $"Fans forced to maximum at {snap.CpuTemp} °C";
+                SetBanner(BannerKind.Warning,
+                    $"Fans forced to maximum: CPU is still at {snap.CpuTemp} °C and {FanSafety.WatchdogFirstStageMode} " +
+                    "did not bring them up. They are pinned at full and will stay there, because " +
+                    "this mode ignores the temperature - pick a fan mode yourself once the machine " +
+                    "has cooled down.");
+            }
         }
         else
         {
@@ -260,19 +287,21 @@ public partial class MainViewModel : ObservableObject
             if (_reportedWatchdogError != r.Error)
             {
                 _reportedWatchdogError = r.Error;
-                _bannerState.ReportFailure($"CPU reached {snap.CpuTemp} °C and forcing the fans to full failed: {r.Error}");
+                _bannerState.ReportFailure($"CPU reached {snap.CpuTemp} °C and putting the fans on {mode} failed: {r.Error}");
                 SyncBanner();
             }
         }
     }
 
     /// <summary>
-    /// Re-arms the watchdog whenever the fans are put on a mode that is not its own forced Turbo.
+    /// Re-arms the watchdog whenever the fans are put on a mode that is not one of its own stages.
     /// </summary>
     /// <remarks>Wired to <see cref="FanController.Applied"/> rather than to the callers, because
     /// the case that needs it most is the one furthest from here: a resume re-applies the owner's
-    /// saved mode over the forced Turbo, and if the CPU never dropped below the re-arm point
-    /// across the sleep the machine would come back hot, slow and unguarded.</remarks>
+    /// saved mode over whatever the watchdog forced, and if the CPU never dropped below the
+    /// re-arm point across the sleep the machine would come back hot, slow and unguarded. The
+    /// watchdog's own two applies come through here too and are the ones it ignores - see
+    /// <see cref="FanWatchdog.NoteModeApplied"/>.</remarks>
     private void OnFanModeApplied(FanMode mode) => _watchdog.NoteModeApplied();
 
     /// <summary>Raised when a serviced hotkey wants the overlay shown. The window owns the card.</summary>
