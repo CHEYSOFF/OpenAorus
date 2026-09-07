@@ -47,12 +47,37 @@ public static class FanSafety
     public const int MinTopTemperature = 85;
 
     /// <summary>CPU temperature at which the running app takes the fans off the owner, in °C.</summary>
-    public const int WatchdogTriggerTemperature = 90;
+    /// <remarks>
+    /// Above <see cref="CriticalTemperature"/> on purpose, and not the same kind of number. The
+    /// curve rules above describe where a table must already be working; this describes where the
+    /// machine is being cooked. The AORUS 17G KD's own default table tops out at 89 °C asking for
+    /// duty 229 - the controller's maximum - so the firmware treats the high 80s as the ordinary
+    /// temperature for full fans, and this CPU boosts into the 90s under any real load. A trigger
+    /// sitting inside that range fires on a normal Tuesday. At 95 °C with the measured duty still
+    /// under <see cref="WatchdogDutyFloor"/> %, the controller is not doing what its own table
+    /// says it should, which is the genuinely misconfigured machine this exists for.
+    /// </remarks>
+    public const int WatchdogTriggerTemperature = 95;
 
     /// <summary>The duty below which the watchdog considers the fans to be doing too little, in percent.</summary>
     public const int WatchdogDutyFloor = 80;
 
-    /// <summary>CPU temperature the machine must fall back below before the watchdog can fire again, in °C.</summary>
+    /// <summary>Consecutive qualifying polls before the watchdog forces anything.</summary>
+    /// <remarks>The poll runs about once a second, so this is roughly five seconds of a machine
+    /// that is genuinely hot with the fans genuinely not keeping up. A momentary spike - which on
+    /// this CPU is most of them - must cost nothing at all.</remarks>
+    public const int WatchdogPollsToFire = 5;
+
+    /// <summary>Consecutive polls below <see cref="WatchdogRearmTemperature"/> before the watchdog
+    /// hands the fans back to the owner.</summary>
+    /// <remarks>Three times <see cref="WatchdogPollsToFire"/>, and the asymmetry is the point:
+    /// engaging is cheap and quick, letting go is slow and has to be earned. A machine crossing
+    /// back and forth over the danger zone can complete neither run, so the two can never chase
+    /// each other.</remarks>
+    public const int WatchdogPollsToRelease = 15;
+
+    /// <summary>CPU temperature the machine must fall back below before the watchdog hands the
+    /// fans back and can fire again, in °C.</summary>
     public const int WatchdogRearmTemperature = 80;
 
     /// <summary>The mode the watchdog puts the fans on the first time it fires.</summary>

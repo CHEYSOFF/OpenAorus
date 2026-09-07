@@ -125,7 +125,12 @@
 
                         <!-- Sensors. Number and unit are separate runs so the number can carry the
                              size, and the two temperatures are fenced off from the three fan
-                             readings - five equal columns read as one undifferentiated strip. -->
+                             readings - five equal columns read as one undifferentiated strip.
+                             The temperatures bind to the smoothed DisplayCpuTemp/DisplayGpuTemp
+                             rather than to Sensors, which is raw: this CPU moves twenty degrees
+                             between polls, so the raw sample redrawn once a second is a flicker
+                             rather than a reading. Everything that decides anything still reads
+                             Sensors - see MainViewModel.OnSensorPollAsync. -->
                         <Border Grid.Row="3" Style="{StaticResource CardStyle}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -139,14 +144,14 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Style="{StaticResource Muted}" Text="CPU"/>
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Sensors.CpuTemp}"/>
+                                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding DisplayCpuTemp}"/>
                                         <TextBlock Style="{StaticResource MetricUnit}" Text="°C"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Style="{StaticResource Muted}" Text="GPU"/>
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Sensors.GpuTemp}"/>
+                                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding DisplayGpuTemp}"/>
                                         <TextBlock Style="{StaticResource MetricUnit}" Text="°C"/>
                                     </StackPanel>
                                 </StackPanel>

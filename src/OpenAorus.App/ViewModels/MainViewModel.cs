@@ -20,9 +20,32 @@ public partial class MainViewModel : ObservableObject
     /// failing is retried every poll without being announced again every poll.</summary>
     private string? _reportedWatchdogError;
 
+    /// <summary>The two rolling means behind the temperatures the window shows.</summary>
+    /// <remarks>Separate instances rather than one reading both, because the CPU and the GPU are
+    /// two machines as far as the sensor is concerned: they idle and spike at different moments,
+    /// and a dropped read of one must not disturb the other's number.</remarks>
+    private readonly TemperatureAverage _cpuDisplayTemp = new(TemperatureAverage.DisplaySamples);
+    private readonly TemperatureAverage _gpuDisplayTemp = new(TemperatureAverage.DisplaySamples);
+
     [ObservableProperty] private FanMode _selectedMode;
     [ObservableProperty] private int _fixedPercent;
+
+    /// <summary>The last reading, exactly as the sensor gave it.</summary>
+    /// <remarks>Raw on purpose and read by everything that must not be smoothed: the thermal
+    /// watchdog's samples, the temperatures its notices quote, and the sensor-failure state the
+    /// banner reports. <see cref="DisplayCpuTemp"/> and <see cref="DisplayGpuTemp"/> are the
+    /// smoothed pair, and they exist only to be looked at.</remarks>
     [ObservableProperty] private SensorSnapshot _sensors = SensorSnapshot.Empty;
+
+    /// <summary>The CPU temperature to show, in °C: a short rolling mean of the raw readings.</summary>
+    /// <remarks>The raw reading moves twenty degrees between one poll and the next on this CPU, so
+    /// a field bound straight to it strobes instead of reading. See
+    /// <see cref="TemperatureAverage"/> for why this must never be what a decision is made on.</remarks>
+    [ObservableProperty] private int _displayCpuTemp;
+
+    /// <summary>The GPU temperature to show, in °C, smoothed the same way and separately.</summary>
+    [ObservableProperty] private int _displayGpuTemp;
+
     [ObservableProperty] private string _bannerText = "";
     [ObservableProperty] private BannerKind _banner = BannerKind.None;
     [ObservableProperty]
@@ -217,53 +240,86 @@ public partial class MainViewModel : ObservableObject
         _poller.SetInterval(value ? _s.Settings.PollIntervalVisibleMs : _s.Settings.PollIntervalHiddenMs);
 
     /// <summary>
-    /// Handles one sensor poll: publishes the reading, reports it to the banner, and gives the
-    /// thermal watchdog its look at the machine.
+    /// Handles one sensor poll: publishes the reading, rolls it into the two numbers on screen,
+    /// reports it to the banner, and gives the thermal watchdog its look at the machine.
     /// </summary>
-    /// <remarks>Public because the watchdog's behaviour is only worth anything if it can be
-    /// driven a poll at a time in a test; <see cref="SensorPoller"/> is the only other caller.</remarks>
+    /// <remarks>
+    /// The reading is published raw and smoothed only for the display, and the order here is the
+    /// whole of that separation: <see cref="Sensors"/> carries the sample the machine actually
+    /// produced, the two averages are a side branch that nothing reads back, and
+    /// <see cref="RunWatchdogAsync"/> is handed the raw snapshot. Feeding the watchdog the
+    /// smoothed pair would blunt the excursions it counts while still looking like it worked,
+    /// which is the one failure mode a safety guard is not allowed to have.
+    ///
+    /// Public because the watchdog's behaviour is only worth anything if it can be driven a poll
+    /// at a time in a test; <see cref="SensorPoller"/> is the only other caller.
+    /// </remarks>
     /// <param name="snap">The reading this poll produced.</param>
     public async Task OnSensorPollAsync(SensorSnapshot snap)
     {
         Sensors = snap;
+        DisplayCpuTemp = _cpuDisplayTemp.Add(snap.CpuTemp);
+        DisplayGpuTemp = _gpuDisplayTemp.Add(snap.GpuTemp);
         _bannerState.ReportSensorResult(snap.Ok, snap.Error);
         SyncBanner();
         await RunWatchdogAsync(snap);
     }
 
     /// <summary>
-    /// Overrides the fans when the CPU has reached <see cref="FanSafety.WatchdogTriggerTemperature"/>
-    /// °C with the fans doing too little about it, one escalation stage per call.
+    /// Gives the thermal watchdog its look at one poll and carries out whatever it asks for.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The CPU fan's duty is the one read, because the CPU's temperature is what triggered this;
+    /// The reading handed over is the raw one, never the smoothed pair the window shows. The
+    /// watchdog counts consecutive polls itself and that count is only worth anything if the polls
+    /// it counts are the samples the machine actually produced; feeding it an average would blunt
+    /// exactly the excursions it exists to notice, and would do so invisibly.
+    /// </para>
+    /// <para>
+    /// The CPU fan's duty is the one read, because the CPU's temperature is what decided this;
     /// on a one-fan profile the second reading is always 0 and would fire this constantly.
     /// </para>
     /// <para>
-    /// Which mode goes out is <see cref="FanWatchdog"/>'s to say, and it says it twice: the
-    /// aggressive automatic curve first, then - only if a later poll's measured duty says that
-    /// curve did not lift the fans - the fixed maximum. This method's part is to write it and to
-    /// tell the owner which of the two just happened, because "the fans were turned up" and "the
-    /// fans are pinned at maximum until you pick a mode yourself" are different pieces of news.
+    /// Which mode goes out is <see cref="FanWatchdog"/>'s to say, and it says it three times over
+    /// the life of one hot spell: the aggressive automatic curve first, then - only if a later
+    /// poll's measured duty says that curve did not lift the fans - the fixed maximum, and finally
+    /// the owner's own mode once the machine has been demonstrably cool for a run of polls. This
+    /// method's part is to write each of them and to tell the owner which one just happened,
+    /// because "the fans were turned up", "the fans are at maximum" and "you have them back" are
+    /// three different pieces of news.
     /// </para>
     /// <para>
-    /// Nothing is reverted afterwards and nothing is written back to settings.json. The first
-    /// stage needs no reverting - it is an automatic curve and comes down on its own - and leaving
-    /// the machine at maximum and saying so is the safe end of the second: the owner can pick
-    /// another mode the moment they see the notice, whereas dropping back out of it on a timer
-    /// would mean the app silently undoing the one thing it did to protect the hardware.
+    /// The hand-back is not a timer undoing the protection. It is gated on
+    /// <see cref="FanSafety.WatchdogPollsToRelease"/> consecutive polls below
+    /// <see cref="FanSafety.WatchdogRearmTemperature"/> °C - three times the run it takes to
+    /// engage - so by the time it fires the emergency is over by any reading. Leaving the machine
+    /// pinned instead was the old answer, and it was the wrong one:
+    /// <see cref="FanSafety.WatchdogLastResortMode"/> ignores the temperature entirely, so a
+    /// machine that spiked once stayed at full speed at 60 °C until someone changed the mode by
+    /// hand. A guard annoying enough to be switched off guards nothing.
     /// </para>
     /// </remarks>
+    /// <param name="snap">The reading this poll produced, raw.</param>
     private async Task RunWatchdogAsync(SensorSnapshot snap)
     {
-        // The WMI writes are withheld on an unrecognised model, so there is nothing to force and
-        // no point saying so once a second on top of the banner that already explains why.
+        // The WMI writes are withheld on an unrecognised model, so there is nothing to force, no
+        // override of ours to hand back, and no point saying so once a second on top of the banner
+        // that already explains why.
         if (!CanWrite) return;
-        if (!_watchdog.Observe(snap.CpuTemp, snap.Fan1DutyPercent)) return;
 
+        switch (_watchdog.Observe(snap.CpuTemp, snap.Fan1DutyPercent))
+        {
+            case WatchdogAction.Force: await ForceFansAsync(snap); break;
+            case WatchdogAction.Release: await ReleaseFansAsync(snap); break;
+        }
+    }
+
+    /// <summary>Writes the stage the watchdog has just moved to and says which one it was.</summary>
+    /// <param name="snap">The reading that decided it, raw.</param>
+    private async Task ForceFansAsync(SensorSnapshot snap)
+    {
         var stage = _watchdog.Stage;
-        var mode = _watchdog.ModeToApply!.Value;   // non-null on the poll Observe fires for
+        var mode = _watchdog.ModeToApply!.Value;   // non-null on the poll that asked to force one
 
         // Not gated on IsBusy: FanController serializes its own sequences, and an emergency that
         // arrives during the owner's mode click has to be the one that lands last, not the one
@@ -287,9 +343,10 @@ public partial class MainViewModel : ObservableObject
                 StatusLine = $"Fans forced to maximum at {snap.CpuTemp} °C";
                 SetBanner(BannerKind.Warning,
                     $"Fans forced to maximum: CPU is still at {snap.CpuTemp} °C and {FanSafety.WatchdogFirstStageMode} " +
-                    "did not bring them up. They are pinned at full and will stay there, because " +
-                    "this mode ignores the temperature - pick a fan mode yourself once the machine " +
-                    "has cooled down.");
+                    "did not bring them up. They are at full because this mode ignores the " +
+                    "temperature, and they will stay there until the CPU has held below " +
+                    $"{FanSafety.WatchdogRearmTemperature} °C for a while, at which point your own " +
+                    "mode goes back on. Pick a mode yourself at any time to take them back sooner.");
             }
         }
         else
@@ -305,6 +362,65 @@ public partial class MainViewModel : ObservableObject
                 _bannerState.ReportFailure($"CPU reached {snap.CpuTemp} °C and putting the fans on {mode} failed: {r.Error}");
                 SyncBanner();
             }
+        }
+    }
+
+    /// <summary>
+    /// Puts the mode the owner chose back on, now that the machine has been cool for long enough
+    /// that the emergency is over by any reading.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="AppSettings.Mode"/> and not <see cref="SelectedMode"/>. The selection has been
+    /// moved by the watchdog itself - that is what the two stages do to it - so reading it back
+    /// here would hand the machine its own override and call it the owner's choice.
+    /// <see cref="ApplyModeAsync"/> deliberately does not write the file until a mode the owner
+    /// picked has actually landed, and the forced stages never go through it, so the file is still
+    /// the last thing the owner asked for. Its Fixed duty and its curve come from the same place,
+    /// for the same reason.
+    /// </para>
+    /// <para>
+    /// This write re-arms the watchdog on its way out, through
+    /// <see cref="FanController.Applied"/> and <see cref="OnFanModeApplied"/>, exactly as any
+    /// other apply does - and that is harmless rather than the start of a second cycle.
+    /// <see cref="FanWatchdog.Observe"/> has already put the stage back to
+    /// <see cref="WatchdogStage.None"/> before returning <see cref="WatchdogAction.Release"/>, so
+    /// the re-arm finds nothing left to undo, and a release is only ever offered from a stage - so
+    /// it cannot produce another release. Getting back to a stage costs
+    /// <see cref="FanSafety.WatchdogPollsToFire"/> consecutive polls at
+    /// <see cref="FanSafety.WatchdogTriggerTemperature"/> °C, which is not something a machine
+    /// that has just spent <see cref="FanSafety.WatchdogPollsToRelease"/> polls below
+    /// <see cref="FanSafety.WatchdogRearmTemperature"/> °C is about to do.
+    /// </para>
+    /// <para>
+    /// A failed hand-back is reported and not retried. The watchdog is already re-armed, so the
+    /// machine is guarded either way; what it is not is quiet, and the owner has to be told that
+    /// their mode did not go back on rather than being left to wonder why the fans are still up.
+    /// </para>
+    /// </remarks>
+    /// <param name="snap">The reading that decided it, raw.</param>
+    private async Task ReleaseFansAsync(SensorSnapshot snap)
+    {
+        var mode = _s.Settings.Mode;
+        var r = await _s.Fans.ApplyAsync(mode, _s.Settings.FixedPercent, _s.Settings.ToCurve());
+        if (r.Success)
+        {
+            _reportedWatchdogError = null;
+            SelectedMode = mode;
+            StatusLine = $"Fans handed back to {mode} at {snap.CpuTemp} °C";
+            SetBanner(BannerKind.Info,
+                $"Fans handed back: the CPU has stayed below {FanSafety.WatchdogRearmTemperature} °C " +
+                $"for {FanSafety.WatchdogPollsToRelease} readings in a row, so your own {mode} setting " +
+                "is back on. The fans were only taken off you while the machine was genuinely hot.");
+        }
+        else
+        {
+            StatusLine = "Handing the fans back failed";
+            _reportedWatchdogError = r.Error;
+            _bannerState.ReportFailure(
+                $"The machine has cooled, but putting the fans back on {mode} failed: {r.Error}. " +
+                "They are still on the mode the app forced - pick one yourself to take them back.");
+            SyncBanner();
         }
     }
 
@@ -553,7 +669,10 @@ public partial class MainViewModel : ObservableObject
         BannerText = _bannerState.Text;
     }
 
+    /// <summary>The tray hover text. Reads the smoothed pair, as the window does: it is the same
+    /// two numbers in a smaller place, and a tooltip disagreeing with the window it belongs to
+    /// would just look broken.</summary>
     public string TrayTooltip => Sensors.Ok
-        ? $"CPU {Sensors.CpuTemp}° · GPU {Sensors.GpuTemp}° · {Sensors.Fan1Rpm}/{Sensors.Fan2Rpm} rpm · {SelectedMode}"
+        ? $"CPU {DisplayCpuTemp}° · GPU {DisplayGpuTemp}° · {Sensors.Fan1Rpm}/{Sensors.Fan2Rpm} rpm · {SelectedMode}"
         : "OpenAorus - sensor read failed";
 }

@@ -113,29 +113,59 @@ something; only that one checks that what it *did* accept still cools the machin
       `--dump`. The fan table must be the default curve, not the flat one: `--apply` never
       touches the UI, so this is the check that the guard lives in the domain and not in
       the window
-- [ ] Load the machine until the CPU passes 90 °C in a mode whose duty is under 80 % -
-      Quiet under a stress test is the usual way there. Within a second or two the mode
-      selection moves to **Gaming** and the banner reads `Fans raised: CPU reached <n> °C`.
-      That is the first stage: the controller's own aggressive curve, which still tracks
-      the temperature
+- [ ] **First, confirm it stays out of the way.** Run a normal stress test in **Quiet**
+      and watch the CPU number climb into the low 90s, which this chip does readily.
+      Nothing may happen: no banner, no mode change, no fan sequence. A watchdog that fires
+      here is the bug this threshold was moved to fix - the controller's own table already
+      asks for full fans around 89 °C, so the 90s are ordinary
+- [ ] **Then make it fire on purpose.** The reliable way is to give the app a machine that
+      really is hot with the fans really doing nothing: set **Fixed** at its 20 % floor,
+      then load all cores. Fixed ignores temperature, so the duty stays at 20 % while the
+      CPU climbs. Once the CPU has been at **95 °C or above for about five seconds** the
+      mode selection moves to **Gaming** and the banner reads `Fans raised: CPU reached
+      <n> °C`. That is the first stage: the controller's own aggressive curve, which still
+      tracks the temperature
+- [ ] The **five seconds** matter, so check them. A single excursion over 95 °C - one poll,
+      the number flicking up and back - must produce nothing at all. Only a sustained run
+      acts
 - [ ] Watch what happens next, and note which of the two it is. If Gaming brings the CPU
       fan above 80 %, nothing more happens - the machine stays on Gaming, and as the load
       comes off the fans ease down on their own. If it does not, then a poll or two later
       the mode moves to **Turbo** and the banner reads `Fans forced to maximum: CPU is
       still at <n> °C`. Either outcome is correct; the machine's own curve decides which
-- [ ] Whichever it was, that must be the **end** of it. Watch for a further half minute
-      with the load still on and confirm the fans are not being re-driven every second,
-      the mode selection is not flapping between Gaming and Turbo, and the banner does not
-      clear itself while the machine is still hot. At most two write sequences per hot
-      spell reach the controller
+- [ ] Whichever it was, that must be the end of the *forcing*. Watch for a further half
+      minute with the load still on and confirm the fans are not being re-driven every
+      second, the mode selection is not flapping between Gaming and Turbo, and the banner
+      does not clear itself while the machine is still hot. At most two write sequences
+      reach the controller while it stays hot
+- [ ] **Now take the load off and watch it let go.** Once the CPU has stayed below 80 °C
+      for **fifteen readings in a row** - about fifteen seconds - the mode selection moves
+      back to the mode *you* had chosen (the one still in `settings.json`, not Gaming or
+      Turbo) and the banner reads `Fans handed back`. On a machine that reached Turbo this
+      is the important one: Turbo does not read the sensor, so without this the fans stay
+      at full at 60 °C until someone changes the mode by hand
+- [ ] It must hand back exactly **once**. Leave the machine idle for a further two minutes
+      and confirm no second mode write goes out, no banner reappears and the fans are not
+      cycling. Handing the fans back is itself an apply, and an apply re-arms the watchdog,
+      so this is the step that would show a loop
+- [ ] Dip in and out of the danger zone - a short burst of load, a pause, another burst -
+      and confirm neither the five-poll run nor the fifteen-poll run ever completes, so
+      nothing is written at all. The two runs are different lengths precisely so this
+      cannot flap
 - [ ] Keep the load on and click **Quiet** while the watchdog still has the machine. The
-      fans drop, and then within a few seconds - as soon as the lagging duty read-back has
-      come down with them - the watchdog starts again from Gaming and says so. The mode you
-      picked replaced what it had applied, which is the whole reason it was holding off,
-      and the next emergency is a new one that starts at the gentler stage. This stands in
-      for the case that is awkward to stage by hand: on a resume the saved mode is
-      re-applied the same way, and a machine that stayed hot across the sleep would
-      otherwise come back on a slow mode with nothing watching it
+      fans drop, and then within about five seconds - once the lagging duty read-back has
+      come down and a fresh run has been counted - the watchdog starts again from Gaming
+      and says so. The mode you picked replaced what it had applied, which is the whole
+      reason it was holding off, and the next emergency is a new one that starts at the
+      gentler stage. This stands in for the case that is awkward to stage by hand: on a
+      resume the saved mode is re-applied the same way, and a machine that stayed hot
+      across the sleep would otherwise come back on a slow mode with nothing watching it
+- [ ] Finally, watch the **CPU and GPU numbers** themselves through all of the above. They
+      are a short rolling average, so they should move smoothly rather than jumping twenty
+      degrees between redraws, and a single failed sensor read must not make either dive to
+      0. The averaging is cosmetic: the temperatures the banners quote and everything
+      `--dump` writes are the raw readings, so those may well name a degree the window was
+      never showing
 - [ ] **The one that matters.** Set a custom curve you would actually use, click Apply,
       quit the app from the tray, and then load the machine with nothing of OpenAorus
       running. The fans must ramp as the temperature climbs. If they sit at the low end
@@ -698,12 +728,20 @@ symptom shows up above.
   firmware, the guards are merely redundant, which is the harmless direction to be wrong
   in. Section 3.1's load test is what would show the opposite - a curve accepted by the
   app and then not run by the controller.
-- **That 90 °C is the right place for the watchdog to intervene.** It is chosen to sit
-  above any normal load and below anything that throttles hard, not measured. If the
-  17G KD's own thermal management already has the fans up well before that, the watchdog
-  will simply never fire, which section 3.1 asks you to confirm by making it fire on
-  purpose.
-- **What the controller's Gaming curve actually does at 90 °C.** The watchdog's first
+- **That 95 °C is the right place for the watchdog to intervene.** It is reasoned, not
+  measured. The reasoning is that `--dump` shows this controller's default fan table
+  topping out at 89 °C asking for duty 229 - its maximum - so the firmware treats the high
+  80s as the ordinary temperature for full fans, and a threshold inside that range fires on
+  a machine that is behaving normally. 95 °C sits above it, so reaching it with the
+  measured duty still under 80 % means the controller is not doing what its own table says.
+  If this machine's thermal management works, the watchdog should simply never fire on its
+  own, which section 3.1 asks you to confirm by making it fire on purpose.
+- **That five polls to engage and fifteen to release are the right runs.** Also reasoned.
+  Five seconds is meant to be short enough that a genuinely uncooled machine is not left
+  alone and long enough that a boost is not mistaken for one; fifteen is meant to be long
+  enough that the fans do not come off a machine that is still working. Only running it
+  under real load says whether they feel right.
+- **What the controller's Gaming curve actually does above 90 °C.** The watchdog's first
   stage hands the machine to that curve, and nothing in the recovered protocol says where
   it runs. That is deliberately not assumed: the escalation to Turbo is decided by the
   measured CPU fan duty on a later poll, not by a belief about the curve. The second of

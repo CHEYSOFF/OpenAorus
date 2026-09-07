@@ -26,7 +26,7 @@ namespace OpenAorus.Hardware.Tests;
 /// from a saved Quiet it applies Normal, taking a CPU at the trigger temperature <em>down</em>
 /// from full. That apply re-arms the watchdog through <see cref="FanController.Applied"/>, the
 /// next poll sees the same hot CPU and forces Turbo again, and the machine flaps. From a saved
-/// Turbo the first press lands on Quiet at 90 °C. So the cursor the hotkeys read has to follow
+/// Turbo the first press lands on Quiet at the trigger temperature. So the cursor the hotkeys read has to follow
 /// the controller, not the file.
 /// </para>
 /// </remarks>
@@ -36,8 +36,15 @@ public class AppServicesHotkeyModeTests : IDisposable
 
     public void Dispose() { if (Directory.Exists(_dir)) Directory.Delete(_dir, true); }
 
-    /// <summary>The reading that fires the watchdog: at the trigger temperature, fans doing little.</summary>
+    /// <summary>The reading the watchdog counts: at the trigger temperature, fans doing little.</summary>
     private static SensorSnapshot Hot() => new(FanSafety.WatchdogTriggerTemperature, 50, 3000, 3000, 10, 10, true, null);
+
+    /// <summary>Runs the machine hot for the whole run the watchdog insists on before it will act,
+    /// which is what it now takes to reach the first stage.</summary>
+    private static async Task HotSpellAsync(MainViewModel vm)
+    {
+        for (var i = 0; i < FanSafety.WatchdogPollsToFire; i++) await vm.OnSensorPollAsync(Hot());
+    }
 
     private (MainViewModel vm, AppSettings settings, Func<FanMode> cursor) Make(FanMode saved)
     {
@@ -71,7 +78,7 @@ public class AppServicesHotkeyModeTests : IDisposable
         var (vm, settings, cursor) = Make(saved: FanMode.Quiet);
         Assert.Equal(FanMode.Quiet, cursor());
 
-        await vm.OnSensorPollAsync(Hot());
+        await HotSpellAsync(vm);
 
         // The first stage is as much of an override as the last one, so the cursor has to move
         // for it too - a press read off the saved Quiet here would be just as wrong.
@@ -92,7 +99,7 @@ public class AppServicesHotkeyModeTests : IDisposable
     public async Task A_press_on_a_machine_the_watchdog_took_over_cycles_from_full()
     {
         var (vm, settings, cursor) = Make(saved: FanMode.Quiet);
-        await vm.OnSensorPollAsync(Hot());   // first stage: the aggressive curve
+        await HotSpellAsync(vm);             // a sustained hot spell: the aggressive curve
         await vm.OnSensorPollAsync(Hot());   // it did not lift the fans, so: full
 
         // The whole path a real press takes, over the cursor the app hands the service.
@@ -107,7 +114,7 @@ public class AppServicesHotkeyModeTests : IDisposable
         raw.Emit(4, 0, 0, 39);   // the fan key, as the research reads it
         await Task.WhenAll(running);
 
-        // Turbo cycles to Quiet - the owner asked for that, with the machine at 90 °C and the
+        // Turbo cycles to Quiet - the owner asked for that, with the machine at the trigger and the
         // watchdog free to take it straight back. What must not happen is Normal, which is where a
         // press read off the stale saved Quiet would have gone: the app moving a hot machine down
         // from full without anyone asking, and then flapping back to Turbo on the next poll.

@@ -125,7 +125,7 @@ public sealed class AppServices
     /// <see cref="FanSafety.WatchdogTriggerTemperature"/> °C <em>down</em> from full - one press
     /// from a saved Quiet applies Normal - and that apply re-arms the watchdog through
     /// <see cref="FanController.Applied"/>, so the next poll forces Turbo again and the machine
-    /// flaps. From a saved Turbo the first press lands on Quiet at 90 °C.
+    /// flaps. From a saved Turbo the first press lands on Quiet on a machine that is still hot.
     /// </para>
     /// <para>
     /// Subscribed at the controller rather than at the callers, for the reason
