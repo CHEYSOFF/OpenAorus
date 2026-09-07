@@ -36,7 +36,14 @@ public sealed class AppServices
     /// <remarks>Owned here rather than by the channels so a dump exported after the fact still
     /// carries them: "nothing has arrived" is the answer that separates a report this app misread
     /// from a chassis that never sent one, and neither is visible any other way.</remarks>
-    public HotkeyTrace Hotkeys { get; init; } = new();
+    public HotkeyTrace HotkeyTrace { get; init; } = new();
+
+    /// <summary>The Fn hotkey channels. Null when hotkeys are switched off in settings.</summary>
+    /// <remarks>Built here but not opened here: <see cref="Hotkeys.HotkeyService.Start"/> is
+    /// called from <see cref="ViewModels.MainViewModel.InitializeAsync"/>, so <c>--apply</c> and
+    /// <c>--dump</c> - which exit before a window exists - never register an input sink. Nothing
+    /// in the constructors touches the OS.</remarks>
+    public Hotkeys.HotkeyService? Hotkeys { get; init; }
 
     public static AppServices Create()
     {
@@ -51,8 +58,14 @@ public sealed class AppServices
             ? KeyLayout.For(forced)
             : KeyLayout.ForProduct(keyboard.Identity?.Pid ?? 0);
 
+        // One trace, handed to both channels and read back by the dump. Two would mean a dump
+        // that told half the story about a keyboard that is only half working.
+        var trace = new HotkeyTrace();
+
         return new AppServices
         {
+            HotkeyTrace = trace,
+            Hotkeys = settings.Hotkeys.Enabled ? BuildHotkeys(settings, trace) : null,
             Profile = profile,
             Wmi = wmi,
             Fans = new FanController(wmi, profile),
@@ -68,6 +81,39 @@ public sealed class AppServices
             // CI publishes, and this path is what the logon task is registered against.
             ExePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpenAorus.exe"),
         };
+    }
+
+    /// <summary>Builds the hotkey service over the real window and the real subscription.</summary>
+    /// <remarks>
+    /// The mode is read from the settings rather than captured, so a press cycles from whatever
+    /// the app last applied. The settings object itself is the live one, so switching hotkeys off
+    /// in the Settings window takes effect on the next keypress - the only thing the
+    /// <see cref="HotkeySettings.Enabled"/> test above decides is whether the channels are opened
+    /// at all this run.
+    /// </remarks>
+    private static Hotkeys.HotkeyService BuildHotkeys(AppSettings settings, HotkeyTrace trace)
+    {
+        // Captured on the thread Create runs on, which is the one OnStartup runs on and the one
+        // the window will live on. Both channels deliver on some other thread - the message
+        // window's for raw input, a thread-pool callback for WMI - and every action ends at a
+        // view-model property or the overlay card, so this is where they have to come back to.
+        var ui = System.Windows.Application.Current?.Dispatcher
+                 ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
+
+        return new Hotkeys.HotkeyService(
+            new Hotkeys.RawInputWindow(trace),
+            new Hotkeys.WmiEventListener(trace),
+            settings.Hotkeys,
+            () => settings.Mode,
+            post: work =>
+            {
+                // A key pressed while the app is closing has nowhere to land, and a dispatcher
+                // that has begun shutting down refuses the work by throwing - on a callback
+                // thread, where the throw would be recorded as a channel fault for no reason.
+                if (ui.HasShutdownStarted || ui.HasShutdownFinished) return;
+                try { ui.InvokeAsync(work); }
+                catch (TaskCanceledException) { }
+            });
     }
 
     /// <summary>Re-applies the persisted fan mode, charge limit and lighting (startup, resume, --apply).
@@ -113,7 +159,7 @@ public sealed class AppServices
 
     public string WriteDiagnostics()
     {
-        var text = DiagnosticsDump.Render(Wmi, Profile, Version, Hotkeys);
+        var text = DiagnosticsDump.Render(Wmi, Profile, Version, HotkeyTrace);
         var dir = Path.GetDirectoryName(Store.Path)!;
         Directory.CreateDirectory(dir);
         var safe = string.Concat(Profile.Name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Replace(' ', '-');

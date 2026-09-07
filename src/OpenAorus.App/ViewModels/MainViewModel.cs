@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using OpenAorus.Hardware.Config;
 using OpenAorus.Hardware.Fans;
+using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Sensors;
 using OpenAorus.Hardware.Ui;
 
@@ -101,6 +102,16 @@ public partial class MainViewModel : ObservableObject
     {
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         _poller.Start();
+        if (_s.Hotkeys is { } hotkeys)
+        {
+            // Dropped rather than awaited, exactly as the sensor poller's tick is: the raw-input
+            // hook has nowhere to await, and SelectModeAsync's own IsBusy gate is what stops two
+            // sequences overlapping. Opened here rather than in AppServices.Create because --apply
+            // and --dump exit before a window exists, and a registered input sink with nothing to
+            // draw on would be an elevated process listening for nothing.
+            hotkeys.ActionRequested += OnHotkeyRequested;
+            hotkeys.Start();
+        }
         // Applied on every model, not just writable ones: the saved lighting is restored even
         // where the fan and charge-limit writes are withheld. On a read-only model the result
         // then always carries "read-only model", which is the expected state the model banner
@@ -119,6 +130,14 @@ public partial class MainViewModel : ObservableObject
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _s.Fans.Applied -= OnFanModeApplied;
+        if (_s.Hotkeys is { } hotkeys)
+        {
+            // Disposed here and nowhere else. The raw-input registration is process-wide and the
+            // WMI watcher holds an unmanaged subscription that outlives the object if it is only
+            // dropped, so both have to be given back rather than left to the finalizer.
+            hotkeys.ActionRequested -= OnHotkeyRequested;
+            hotkeys.Dispose();
+        }
         _poller.Stop();
         // A lighting sequence is paced 65 ms per report and there is no window left to show its
         // result on, so it is dropped rather than held on to on the way out.
@@ -215,6 +234,54 @@ public partial class MainViewModel : ObservableObject
     /// saved mode over the forced Turbo, and if the CPU never dropped below the re-arm point
     /// across the sleep the machine would come back hot, slow and unguarded.</remarks>
     private void OnFanModeApplied(FanMode mode) => _watchdog.NoteModeApplied();
+
+    /// <summary>Raised when a serviced hotkey wants the overlay shown. The window owns the card.</summary>
+    public event Action<string>? OverlayRequested;
+
+    /// <summary>Drops the task, for the reason the sensor poller's subscription drops its own.</summary>
+    private void OnHotkeyRequested(HotkeyAction action) => _ = OnHotkeyAsync(action);
+
+    /// <summary>
+    /// Acts on one hotkey. <see cref="Hotkeys.HotkeyService"/> decides; this does.
+    /// </summary>
+    /// <remarks>
+    /// Public because the whole point of the pure decision is that the acting can be driven an
+    /// action at a time in a test.
+    ///
+    /// Reached on the UI thread: the service hands every action to the dispatcher before raising
+    /// it, because raw input arrives on the message window's thread and a WMI notice on a
+    /// thread-pool callback, and everything below is a view-model property or a window.
+    /// </remarks>
+    /// <param name="action">What the policy decided.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="action"/> is null.</exception>
+    public async Task OnHotkeyAsync(HotkeyAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        switch (action.Outcome)
+        {
+            case HotkeyOutcome.CycleFanMode when action.Mode is { } mode:
+                // Through SelectModeAsync, and therefore behind IsBusy, which is the difference
+                // between this and the watchdog's deliberately ungated write. The debouncer
+                // throttles rather than latches - there is no key-up on these collections - so a
+                // held key keeps producing fresh signals about every 250 ms while one apply is
+                // five to seven steps paced at FanController.StepDelayMs. Queued, that is a
+                // machine spending the next minute working through presses nobody is still
+                // making; dropped, it is one mode change per press the owner can see land.
+                await SelectModeAsync(mode);
+                break;
+
+            case HotkeyOutcome.SetBacklightLevel:
+                Lighting.NoteFirmwareBacklight(action.Level);
+                break;
+
+            case HotkeyOutcome.Notify:
+                // The firmware already did it. There is nothing to write and nothing to save.
+                break;
+        }
+
+        if (action.ShowOverlay) OverlayRequested?.Invoke(action.Text);
+    }
 
     private async void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {

@@ -140,21 +140,42 @@ public sealed class WmiEventListener : IWmiEventSource
                 }
             }
 
-            // Checked, not assumed: an absent property, a value of an unexpected type and a
-            // number that will not fit all land here, and none of them is something to hand on.
-            if (WmiEventDecoder.TryReadData(data, out var value))
-            {
-                _trace.RecordEvent(value);
-                EventReceived?.Invoke(value);
-                return;
-            }
-
-            _trace.RecordUnreadableEvent(names);
+            Deliver(data, names);
         }
         catch (Exception ex)
         {
             _trace.RecordFault(EventSite, ex);
         }
+    }
+
+    /// <summary>Writes one event down and then hands it on, in that order.</summary>
+    /// <remarks>
+    /// Public for the reason <see cref="RawInputWindow.Deliver"/> is: reaching it through a live
+    /// subscription needs an elevated process and a Gigabyte provider, and this is the whole of
+    /// what the callback does once it has the property bag. Walking the bag is what is left
+    /// unreachable, and VERIFY 8.1 is what confirms that half.
+    ///
+    /// Checked, not assumed: an absent property, a value of an unexpected type and a number that
+    /// will not fit all land in the second branch, and none of them is something to hand on. What
+    /// they are is the one thing that would explain a subscription that runs forever and reports
+    /// nothing, so they are written down with the names that did arrive.
+    /// </remarks>
+    /// <param name="data">The <c>Data</c> property's value, exactly as the provider boxed it, or
+    /// null when the event carried no such property.</param>
+    /// <param name="propertyNames">The property names the event did carry.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="propertyNames"/> is null.</exception>
+    public void Deliver(object? data, IReadOnlyList<string> propertyNames)
+    {
+        ArgumentNullException.ThrowIfNull(propertyNames);
+
+        if (WmiEventDecoder.TryReadData(data, out var value))
+        {
+            _trace.RecordEvent(value);
+            EventReceived?.Invoke(value);
+            return;
+        }
+
+        _trace.RecordUnreadableEvent(propertyNames);
     }
 
     private void TearDown()

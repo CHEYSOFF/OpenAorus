@@ -170,6 +170,33 @@ public partial class LightingViewModel : ObservableObject
     /// </summary>
     public void Shutdown() => _shutdown.Cancel();
 
+    /// <summary>
+    /// Moves the brightness slider to the level the keyboard's firmware has just set itself to.
+    /// </summary>
+    /// <remarks>
+    /// The keyboard changed its own backlight before this app heard about it, so nothing is
+    /// written back: a write here would be a redundant 264-byte report racing the firmware for
+    /// the same value, and on a held key it would be one per repeat. The live write is suppressed
+    /// for exactly that reason, and the setting is recorded so a restart restores what the owner
+    /// last left the keyboard on.
+    ///
+    /// Clamped rather than trusted. The level comes off a decoded report, and a slider bound to a
+    /// value outside its own range is a broken panel rather than a wrong number.
+    /// </remarks>
+    /// <param name="percent">The level the firmware reported, 0-100.</param>
+    public void NoteFirmwareBacklight(int percent)
+    {
+        var level = Math.Clamp(percent, 0, 100);
+
+        _suppressLiveWrite = true;
+        try { BrightnessPercent = level; }
+        finally { _suppressLiveWrite = false; }
+
+        _s.Settings.Lighting.BrightnessPercent = level;
+        try { _s.Store.Save(_s.Settings); }
+        catch (Exception ex) { _banner(BannerKind.Error, $"Lighting could not be saved: {ex.Message}"); }
+    }
+
     // ---- Commands -------------------------------------------------------------------
 
     /// <summary>Writes the current effect now, rather than waiting for a parameter to change.</summary>

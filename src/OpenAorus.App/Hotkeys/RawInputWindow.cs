@@ -280,6 +280,28 @@ public sealed class RawInputWindow : IHotkeySource
             return;
         }
 
+        Deliver(reports);
+    }
+
+    /// <summary>Writes each report down and then hands it on, in that order.</summary>
+    /// <remarks>
+    /// Public for the same reason <see cref="ViewModels.MainViewModel.OnSensorPollAsync"/> is: it
+    /// is the whole of what the window procedure does once it has bytes, and everything above it -
+    /// the decoder, the debounce, the policy, the fan write - is only worth anything if it can be
+    /// driven a report at a time in a test. The packet walk above cannot be, and does not need to
+    /// be twice.
+    ///
+    /// The order is the contract. The trace is what separates "nothing arrived" from "reports
+    /// arrived and nothing happened", so a report has to be written down before anyone decides it
+    /// means nothing - including a subscriber that throws, whose exception the WM_INPUT boundary
+    /// catches after the line is already in the ring.
+    /// </remarks>
+    /// <param name="reports">The reports one packet held, in arrival order.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="reports"/> is null.</exception>
+    public void Deliver(IReadOnlyList<byte[]> reports)
+    {
+        ArgumentNullException.ThrowIfNull(reports);
+
         foreach (var report in reports)
         {
             _trace.RecordReport(report);
