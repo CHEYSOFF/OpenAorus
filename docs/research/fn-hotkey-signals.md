@@ -90,3 +90,58 @@ about: fan mode, keyboard backlight level, and the touchpad and Wi-Fi toggles.
 - What the `0xFF00/0xFF00` 9-byte output report is for; Gigabyte writes to it but the
   decompiled code path is unclear.
 - Whether the Fn key itself can be observed, or only the resulting combinations.
+
+## Observed on hardware — AORUS 17G KD, 2026-09-07
+
+Everything above this heading was recovered from Gigabyte's binaries. Everything below was
+**observed on a real machine** through the diagnostics trace, and where the two disagree,
+this section wins for this chassis.
+
+### The channel works
+
+`reports=108 unreadable-packets=0 events=0 unreadable-events=0 faults=0`
+
+Raw input registers, the message window receives, and `RawInputBuffer` read every packet.
+So the 24-byte x64 `RAWINPUTHEADER`, the `RAWHID` prologue offsets and the report walk are
+all correct on this hardware.
+
+### The byte indexing is correct
+
+Every report is four bytes beginning `04`, and the first byte equals the report length.
+That is the internal consistency check the two recovered tables offered, and the hardware
+agrees with it. `bRawData1 == report[0]` is confirmed, not merely assumed.
+
+### The key codes are NOT the ones in the tables above
+
+The recovered tables give 137/138/139 for the launcher keys and 37/38/39 for fan modes.
+This chassis sends none of those. Observed instead, all on the 4-byte shape:
+
+| Bytes | Decimal 4th | Key | How it was established |
+|---|---|---|---|
+| `04 00 00 7D` then `04 00 00 00` | 125 | **Brightness down** | repeated presses, then by elimination |
+| `04 00 00 7E` then `04 00 00 00` | 126 | **Brightness up** | four isolated presses, nothing else pressed |
+| `04 00 01 86` then `04 00 00 86` | 134 | unidentified | third byte toggles 1 then 0 |
+| `04 00 01 87` then `04 00 00 87` | 135 | unidentified | third byte toggles 1 then 0 |
+
+Two release conventions exist. The brightness keys clear the code (`04 00 00 00`); the
+`86`/`87` keys keep the code and toggle **byte 2** from 1 to 0. So byte 2 is a press/release
+flag for that class of key, and a decoder must not treat a non-zero byte 2 as a mismatch.
+
+### The firmware reports brightness but does not apply it
+
+This is the finding that changes a design decision. The panel brightness does **not** change
+when these keys are pressed with Gigabyte's software stopped. The firmware only reports the
+intent; Control Center was performing the change in software. `GetBrightness` on the WMI
+interface answers `Invalid object` on this model, so the embedded controller does not expose
+it either.
+
+Consequence: an app that wants the brightness keys to work must set the panel brightness
+itself, and because that change does not travel through Windows' own hotkey path, Windows
+draws no overlay for it. The rule "never draw for brightness because Windows already does"
+was written from the decompiled behaviour and is **false on this chassis**.
+
+### The WMI event channel produced nothing
+
+`events=0` across 108 reports. Either this chassis does not use `GB_WMIACPI_Event` for
+hotkeys, or the keys that would raise it (touchpad, Wi-Fi) were not among those pressed.
+Not yet settled.
