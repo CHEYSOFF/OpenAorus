@@ -262,13 +262,13 @@ the controller ramps it as things heat up. The floors are checked wherever a
 setting reaches the hardware, including `--apply`, and an old or hand-edited
 `settings.json` that breaks them is repaired on load with a notice saying so.
 While the app is running it also watches the CPU, and it is deliberately hard to
-provoke. It acts only after five readings in a row - about five seconds - at
-95 °C or above with the measured CPU fan duty still under 80 %. A momentary
-spike does nothing at all. 95 °C is above the point where the controller's own
-default table has already asked for maximum fans, which on the AORUS 17G KD is
-89 °C, so a machine that gets there with the duty still low is one whose fan
-control is genuinely not working - not one that is merely boosting, which this
-CPU does into the 90s all day.
+provoke. It acts only after the machine has held five seconds at 95 °C or above
+with the measured CPU fan duty still under 80 %. A momentary spike does nothing
+at all. 95 °C is above the point where the controller's own default table has
+already asked for maximum fans, which on the AORUS 17G KD is 89 °C, so a machine
+that gets there with the duty still low is one whose fan control is genuinely
+not working - not one that is merely boosting, which this CPU does into the 90s
+all day.
 
 When it does act it does so in two stages. First it puts the fans on Gaming, the
 controller's own aggressive automatic curve, which lifts them and then eases
@@ -278,11 +278,22 @@ reading the temperature at all, which is why it is the last resort and not the
 first answer.
 
 Neither stage is permanent. Once the CPU has stayed below 80 °C for fifteen
-readings in a row - three times the run it takes to engage, so the two cannot
-oscillate - your own saved mode goes back on and the app says so. You can also
-just pick a mode yourself at any point; that takes the fans back immediately and
-re-arms the watchdog for the next time. Each of the three steps tells you which
-one it was.
+seconds - three times the run it takes to engage, so the two cannot oscillate -
+your own saved mode goes back on and the app says so. You can also just pick a
+mode yourself at any point; that takes the fans back immediately and re-arms the
+watchdog for the next time. Each of the three steps tells you which one it was.
+
+Both of those are five and fifteen *seconds*, and they are the same five and
+fifteen whether the window is open or the app is sitting in the tray. The app
+reads the sensors once a second with the window up and once every five seconds
+when it is hidden, so the two runs are measured in elapsed time rather than in
+polls - a count of polls would have meant twenty-five seconds to react and
+seventy-five to let go on a tray-resident app, which is how it normally runs.
+Changing either poll interval in Settings does not move them either. What a
+run does need is to have been *watched*: if the app was suspended, or a poll was
+skipped, the reading that arrives long afterwards starts a fresh run rather than
+completing the one it interrupted, because two readings a minute apart say
+nothing about the minute between them.
 
 The two temperatures in the window are a short rolling average, because the raw
 reading moves twenty degrees between one poll and the next and a number redrawn

@@ -121,10 +121,10 @@ something; only that one checks that what it *did* accept still cools the machin
 - [ ] **Then make it fire on purpose.** The reliable way is to give the app a machine that
       really is hot with the fans really doing nothing: set **Fixed** at its 20 % floor,
       then load all cores. Fixed ignores temperature, so the duty stays at 20 % while the
-      CPU climbs. Once the CPU has been at **95 °C or above for about five seconds** the
-      mode selection moves to **Gaming** and the banner reads `Fans raised: CPU reached
-      <n> °C`. That is the first stage: the controller's own aggressive curve, which still
-      tracks the temperature
+      CPU climbs. Once the CPU has been at **95 °C or above for five seconds** the mode
+      selection moves to **Gaming** and the banner reads `Fans raised: CPU reached <n> °C`.
+      That is the first stage: the controller's own aggressive curve, which still tracks
+      the temperature
 - [ ] The **five seconds** matter, so check them. A single excursion over 95 °C - one poll,
       the number flicking up and back - must produce nothing at all. Only a sustained run
       acts
@@ -139,17 +139,26 @@ something; only that one checks that what it *did* accept still cools the machin
       does not clear itself while the machine is still hot. At most two write sequences
       reach the controller while it stays hot
 - [ ] **Now take the load off and watch it let go.** Once the CPU has stayed below 80 °C
-      for **fifteen readings in a row** - about fifteen seconds - the mode selection moves
-      back to the mode *you* had chosen (the one still in `settings.json`, not Gaming or
-      Turbo) and the banner reads `Fans handed back`. On a machine that reached Turbo this
-      is the important one: Turbo does not read the sensor, so without this the fans stay
-      at full at 60 °C until someone changes the mode by hand
+      for **fifteen seconds** the mode selection moves back to the mode *you* had chosen
+      (the one still in `settings.json`, not Gaming or Turbo) and the banner reads `Fans
+      handed back`. On a machine that reached Turbo this is the important one: Turbo does
+      not read the sensor, so without this the fans stay at full at 60 °C until someone
+      changes the mode by hand
+- [ ] **Both of those timings are the same with the window hidden**, and that is the point
+      of this step. The app polls the sensors once a second with the window open and once
+      every five seconds in the tray, which is where it normally lives. Repeat the two steps
+      above with the window closed to the tray: make it fire, then take the load off, and
+      time it with a watch. Engaging must still take five seconds and handing back fifteen -
+      not twenty-five and seventy-five. Confirm it from the tray tooltip and the notice,
+      then open the window and check the banner says the same thing. Open and close the
+      window *during* a hot spell too: changing the poll rate mid-run must neither restart
+      the run nor complete it early
 - [ ] It must hand back exactly **once**. Leave the machine idle for a further two minutes
       and confirm no second mode write goes out, no banner reappears and the fans are not
       cycling. Handing the fans back is itself an apply, and an apply re-arms the watchdog,
       so this is the step that would show a loop
 - [ ] Dip in and out of the danger zone - a short burst of load, a pause, another burst -
-      and confirm neither the five-poll run nor the fifteen-poll run ever completes, so
+      and confirm neither the five-second run nor the fifteen-second run ever completes, so
       nothing is written at all. The two runs are different lengths precisely so this
       cannot flap
 - [ ] Keep the load on and click **Quiet** while the watchdog still has the machine. The
@@ -160,6 +169,10 @@ something; only that one checks that what it *did* accept still cools the machin
       gentler stage. This stands in for the case that is awkward to stage by hand: on a
       resume the saved mode is re-applied the same way, and a machine that stayed hot
       across the sleep would otherwise come back on a slow mode with nothing watching it
+- [ ] Sleep the machine while it is hot and wake it. The first reading after the resume is
+      hours older than the one before it, and it must start a run rather than finish one:
+      nothing may be forced on that single poll. Five seconds of readings after the wake
+      can act, and should
 - [ ] Finally, watch the **CPU and GPU numbers** themselves through all of the above. They
       are a short rolling average, so they should move smoothly rather than jumping twenty
       degrees between redraws, and a single failed sensor read must not make either dive to
@@ -736,7 +749,7 @@ symptom shows up above.
   measured duty still under 80 % means the controller is not doing what its own table says.
   If this machine's thermal management works, the watchdog should simply never fire on its
   own, which section 3.1 asks you to confirm by making it fire on purpose.
-- **That five polls to engage and fifteen to release are the right runs.** Also reasoned.
+- **That five seconds to engage and fifteen to release are the right runs.** Also reasoned.
   Five seconds is meant to be short enough that a genuinely uncooled machine is not left
   alone and long enough that a boost is not mistaken for one; fifteen is meant to be long
   enough that the fans do not come off a machine that is still working. Only running it

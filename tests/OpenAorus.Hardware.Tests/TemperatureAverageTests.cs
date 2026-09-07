@@ -97,9 +97,12 @@ public class TemperatureAverageTests
     [Fact]
     public void The_display_window_is_not_the_watchdogs_run()
     {
-        // Two different jobs that happen to count polls. Tying them together would mean a change
-        // made for legibility silently moving when the fans get taken off the owner.
-        Assert.NotEqual(FanSafety.WatchdogPollsToFire, TemperatureAverage.DisplaySamples);
+        // Two different jobs, and no longer even the same unit: this is a count of samples and
+        // the watchdog's run is a duration in seconds. Tying them together - by number or by
+        // making one read the other - would mean a change made for legibility silently moving
+        // when the fans get taken off the owner. The count stays here and out of FanSafety.
+        Assert.NotEqual(FanSafety.WatchdogSecondsToFire, TemperatureAverage.DisplaySamples);
+        Assert.NotEqual(FanSafety.WatchdogSecondsToRelease, TemperatureAverage.DisplaySamples);
     }
 
     [Fact]

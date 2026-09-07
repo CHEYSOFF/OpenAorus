@@ -104,13 +104,13 @@ public class MainViewModelHotkeyChannelTests : IDisposable
         };
 
         await vm.InitializeAsync();
-        await vm.OnSensorPollAsync(new SensorSnapshot(60, 50, 3000, 3000, 30, 30, true, null));
+        await vm.OnSensorPollAsync(new SensorSnapshot(60, 50, 3000, 3000, 30, 30, true, null), nowMs: 5000);
 
         // Read once and then out of the way, like every other override notice in this app.
         Assert.DoesNotContain("Fn", vm.BannerText, StringComparison.Ordinal);
 
-        await vm.OnSensorPollAsync(new SensorSnapshot(61, 50, 3000, 3000, 30, 30, true, null));
-        await vm.OnSensorPollAsync(new SensorSnapshot(62, 50, 3000, 3000, 30, 30, true, null));
+        await vm.OnSensorPollAsync(new SensorSnapshot(61, 50, 3000, 3000, 30, 30, true, null), nowMs: 10000);
+        await vm.OnSensorPollAsync(new SensorSnapshot(62, 50, 3000, 3000, 30, 30, true, null), nowMs: 15000);
         vm.Shutdown();
 
         // The channels are still shut and StartError still says so, so anything that re-read it

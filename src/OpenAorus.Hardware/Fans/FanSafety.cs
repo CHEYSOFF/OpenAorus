@@ -62,19 +62,45 @@ public static class FanSafety
     /// <summary>The duty below which the watchdog considers the fans to be doing too little, in percent.</summary>
     public const int WatchdogDutyFloor = 80;
 
-    /// <summary>Consecutive qualifying polls before the watchdog forces anything.</summary>
-    /// <remarks>The poll runs about once a second, so this is roughly five seconds of a machine
-    /// that is genuinely hot with the fans genuinely not keeping up. A momentary spike - which on
-    /// this CPU is most of them - must cost nothing at all.</remarks>
-    public const int WatchdogPollsToFire = 5;
+    /// <summary>How long the machine must hold the qualifying reading before the watchdog forces
+    /// anything, in seconds.</summary>
+    /// <remarks>
+    /// A duration and not a count of polls, because the poll rate is not fixed. The window being
+    /// open or in the tray moves it between
+    /// <see cref="Config.AppSettings.PollIntervalVisibleMs"/> and
+    /// <see cref="Config.AppSettings.PollIntervalHiddenMs"/>, and both are settings the owner can
+    /// change, so a count of five polls meant five seconds with the window open and twenty-five
+    /// with it in the tray - the slowest response on the machine nobody is watching, which for a
+    /// background utility is the ordinary case. This is five seconds of a machine that is
+    /// genuinely hot with the fans genuinely not keeping up, at whatever rate the app happens to
+    /// be polling. A momentary spike - which on this CPU is most of them - must cost nothing at
+    /// all.
+    /// </remarks>
+    public const int WatchdogSecondsToFire = 5;
 
-    /// <summary>Consecutive polls below <see cref="WatchdogRearmTemperature"/> before the watchdog
-    /// hands the fans back to the owner.</summary>
-    /// <remarks>Three times <see cref="WatchdogPollsToFire"/>, and the asymmetry is the point:
+    /// <summary>How long the CPU must hold below <see cref="WatchdogRearmTemperature"/> before the
+    /// watchdog hands the fans back to the owner, in seconds.</summary>
+    /// <remarks>Three times <see cref="WatchdogSecondsToFire"/>, and the asymmetry is the point:
     /// engaging is cheap and quick, letting go is slow and has to be earned. A machine crossing
     /// back and forth over the danger zone can complete neither run, so the two can never chase
-    /// each other.</remarks>
-    public const int WatchdogPollsToRelease = 15;
+    /// each other. Being a duration, it is the same fifteen seconds with the window open and with
+    /// it in the tray, which is what the owner waiting seventy-five for their fans was not
+    /// getting.</remarks>
+    public const int WatchdogSecondsToRelease = 15;
+
+    /// <summary>How many times the expected poll interval one poll may be late before the run it
+    /// would have extended counts as broken.</summary>
+    /// <remarks>
+    /// A duration alone is not the whole of "sustained": two readings an hour apart span far more
+    /// than <see cref="WatchdogSecondsToFire"/> seconds while saying nothing about the hour
+    /// between them. A suspended machine, a starved UI thread or a simply skipped poll all produce
+    /// that shape, and letting one late reading close a run would force the fans - or hand them
+    /// back - on the strength of a single sample. So a run has to be observed across its whole
+    /// window, and a gap this much wider than the cadence the app is actually polling at means it
+    /// was not. Wide enough that a late tick on a busy machine costs nothing; narrow enough that a
+    /// sleep cannot be mistaken for evidence.
+    /// </remarks>
+    public const int WatchdogMaxPollGapFactor = 3;
 
     /// <summary>CPU temperature the machine must fall back below before the watchdog hands the
     /// fans back and can fire again, in °C.</summary>

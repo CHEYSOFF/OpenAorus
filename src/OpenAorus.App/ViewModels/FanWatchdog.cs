@@ -47,20 +47,48 @@ public enum WatchdogAction
 /// <remarks>
 /// <para>
 /// The rule itself is one line - hot CPU, fans not keeping up, override them - but it is fed by a
-/// timer that ticks about once a second, so it is really a small state machine and it lives here
-/// on its own rather than inside the poller's callback where nothing could reach it.
-/// <see cref="MainViewModel"/> owns one and does the acting; this decides.
+/// timer, so it is really a small state machine and it lives here on its own rather than inside
+/// the poller's callback where nothing could reach it. <see cref="MainViewModel"/> owns one and
+/// does the acting; this decides.
 /// </para>
 /// <para>
-/// Both ends of an emergency are counted rather than instantaneous, and the two counts are
-/// deliberately different sizes. <see cref="FanSafety.WatchdogPollsToFire"/> consecutive
-/// qualifying polls - about five seconds - are needed before anything is forced, because this CPU
-/// boosts into the 90s constantly and the controller's own default table already asks for maximum
-/// fans up there: a single reading over the trigger is not evidence of a misconfigured machine.
-/// <see cref="FanSafety.WatchdogPollsToRelease"/> consecutive polls below
-/// <see cref="FanSafety.WatchdogRearmTemperature"/> °C - about fifteen - are needed before the
-/// fans are handed back. Three times as long to let go as to engage is what makes oscillation
-/// impossible: a machine flickering across the danger zone can satisfy neither run.
+/// Both ends of an emergency are runs rather than instants, and the two runs are deliberately
+/// different lengths. <see cref="FanSafety.WatchdogSecondsToFire"/> seconds of qualifying readings
+/// are needed before anything is forced, because this CPU boosts into the 90s constantly and the
+/// controller's own default table already asks for maximum fans up there: a single reading over
+/// the trigger is not evidence of a misconfigured machine.
+/// <see cref="FanSafety.WatchdogSecondsToRelease"/> seconds below
+/// <see cref="FanSafety.WatchdogRearmTemperature"/> °C are needed before the fans are handed back.
+/// Three times as long to let go as to engage is what makes oscillation impossible: a machine
+/// flickering across the danger zone can satisfy neither run.
+/// </para>
+/// <para>
+/// Both are measured in elapsed time and not in polls, and that is the whole reason this takes a
+/// clock reading. The poll rate is not fixed: it is
+/// <see cref="OpenAorus.Hardware.Config.AppSettings.PollIntervalVisibleMs"/> with the window open and
+/// <see cref="OpenAorus.Hardware.Config.AppSettings.PollIntervalHiddenMs"/> with it in the tray, five times slower,
+/// and both are settings. Counting polls therefore meant five seconds to engage with the window
+/// open and twenty-five with it away - the slowest response on the machine nobody is watching,
+/// which for a tray utility is the ordinary state - and fifteen seconds to let go became
+/// seventy-five, which is what the owner was actually waiting on. A duration means the same thing
+/// at any rate, including a rate the owner changes, and including a rate that changes in the
+/// middle of a run: the window can be opened or hidden while the machine is hot, and a run
+/// measured in seconds simply carries on across it.
+/// </para>
+/// <para>
+/// The clock is passed in and never read here. A class that reads its own clock cannot be tested
+/// without sleeping, and a test that sleeps is a test that is flaky about the one thing this
+/// exists to get right; the same reasoning that keeps <see cref="OpenAorus.Hardware.Hotkeys.SignalDebouncer"/> pure.
+/// <see cref="MainViewModel"/> reads <see cref="Environment.TickCount64"/> at the poller's
+/// callback and hands it down. Monotonic, so a wall-clock correction cannot invent or erase a run.
+/// </para>
+/// <para>
+/// A duration on its own is not the whole of "sustained", though: two readings an hour apart span
+/// five seconds many times over while saying nothing about the hour between them. So the caller
+/// also says how often it is polling, and a poll arriving more than
+/// <see cref="FanSafety.WatchdogMaxPollGapFactor"/> times that late - a suspended machine, a
+/// starved UI thread, a dropped tick - is treated as breaking whatever run it would have extended
+/// rather than completing it. Both runs restart from that poll; nothing latches off.
 /// </para>
 /// <para>
 /// The answer comes in two stages, and the reason is that the two available modes are not the
@@ -117,12 +145,43 @@ public sealed class FanWatchdog
     /// for. That write is itself an applied mode, and it is the one thing that must not re-arm.</summary>
     private bool _forcing;
 
-    /// <summary>How many polls in a row have been hot with the fans not keeping up, capped at the
-    /// count that matters.</summary>
-    private int _dangerousPolls;
+    /// <summary>An unbroken run of readings that all said the same thing about the machine.</summary>
+    /// <remarks>A run is its start and nothing else: how long it has lasted is the current poll's
+    /// timestamp minus that, so nothing accumulates, nothing can be capped and nothing drifts.
+    /// <see cref="Running"/> being false is a run that has ended - the reading stopped qualifying,
+    /// or the polls stopped arriving often enough to be watching.</remarks>
+    private struct Run
+    {
+        public bool Running;
+        public long StartedMs;
 
-    /// <summary>How many polls in a row have read below the re-arm temperature, capped likewise.</summary>
-    private int _coolPolls;
+        /// <summary>Extends the run if <paramref name="qualifies"/>, starting it where it is not
+        /// already going; ends it if not.</summary>
+        public void Observe(bool qualifies, long nowMs)
+        {
+            if (!qualifies) { Running = false; return; }
+            if (!Running) { Running = true; StartedMs = nowMs; }
+        }
+
+        /// <summary>Whether this run has been going for <paramref name="seconds"/> as of
+        /// <paramref name="nowMs"/>.</summary>
+        public readonly bool HasLasted(int seconds, long nowMs) =>
+            Running && nowMs - StartedMs >= seconds * 1000L;
+
+        public void End() => Running = false;
+    }
+
+    /// <summary>How long the machine has been hot with the fans not keeping up.</summary>
+    private Run _hot;
+
+    /// <summary>How long it has been reading below the re-arm temperature.</summary>
+    private Run _cool;
+
+    /// <summary>When the last poll arrived, and the cadence it claimed to be arriving at. Together
+    /// they are what says whether the next one continues a run or interrupts it.</summary>
+    private long _lastPollMs;
+    private int _lastExpectedIntervalMs;
+    private bool _hasPolled;
 
     /// <summary>
     /// Feeds one poll in and answers what, if anything, should be written to the controller right
@@ -130,11 +189,22 @@ public sealed class FanWatchdog
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Both counters are functions of the readings and of nothing else: a poll that is not hot
-    /// zeroes the hot run, a poll that is not cool zeroes the cool run, and nothing outside this
-    /// method ever touches either. That is what makes "five in a row" and "fifteen in a row" mean
+    /// Both runs are functions of the readings, the clock and nothing else: a poll that is not hot
+    /// ends the hot run, a poll that is not cool ends the cool run, and nothing outside this
+    /// method ever touches either. That is what makes "five seconds" and "fifteen seconds" mean
     /// what they say, and it is why a machine crossing back and forth over the danger zone gets
     /// neither answer rather than both.
+    /// </para>
+    /// <para>
+    /// A run also has to have been <em>watched</em>, not merely spanned. If this poll arrives more
+    /// than <see cref="FanSafety.WatchdogMaxPollGapFactor"/> times the expected interval after the
+    /// last one - the app was suspended, the UI thread was starved, a tick was dropped - then
+    /// whatever happened in between was not observed, and a run cannot be closed on the strength of
+    /// two samples with a silence between them. Both runs end and restart from this poll. The
+    /// allowance is measured against the wider of the two cadences either poll claimed, so the
+    /// window being opened or hidden mid-run - which changes the rate by a factor of five in one
+    /// step - is an ordinary poll and not a gap. A clock that moved backwards is treated the same
+    /// way: not a measurement, so not a run.
     /// </para>
     /// <para>
     /// <see cref="WatchdogAction.Force"/> is returned on a transition, never for as long as the
@@ -145,8 +215,8 @@ public sealed class FanWatchdog
     /// then into <see cref="WatchdogStage.Maximum"/> - and the second one is only offered once the
     /// first one's write has been accounted for by <see cref="NoteForcedMode"/>. Polls arriving
     /// during that write read a duty that predates it and must not be allowed to escalate on it.
-    /// The sustained count gates the <em>start</em> of an emergency and not the escalation: by
-    /// then the machine has already spent five polls proving itself and has had a whole write
+    /// The sustained run gates the <em>start</em> of an emergency and not the escalation: by then
+    /// the machine has already spent its five seconds proving itself and has had a whole write
     /// sequence land on it without the duty moving.
     /// </para>
     /// <para>
@@ -157,9 +227,9 @@ public sealed class FanWatchdog
     /// re-armed. The re-arm is therefore a no-op rather than the start of a fresh cycle, and since
     /// a release cannot be produced from <see cref="WatchdogStage.None"/> it cannot produce
     /// another release. Getting back to a stage from there costs
-    /// <see cref="FanSafety.WatchdogPollsToFire"/> consecutive polls at
-    /// <see cref="FanSafety.WatchdogTriggerTemperature"/> °C, each of which zeroes the cool run -
-    /// which a machine that has just spent fifteen polls below
+    /// <see cref="FanSafety.WatchdogSecondsToFire"/> unbroken seconds at
+    /// <see cref="FanSafety.WatchdogTriggerTemperature"/> °C, every reading of which ends the cool
+    /// run - which a machine that has just spent fifteen seconds below
     /// <see cref="FanSafety.WatchdogRearmTemperature"/> °C is not doing.
     /// </para>
     /// <para>
@@ -171,28 +241,41 @@ public sealed class FanWatchdog
     /// </para>
     /// </remarks>
     /// <param name="cpuCelsius">The CPU temperature from this poll, in °C. Raw, as read - a
-    /// smoothed value would hide the spikes this is counting.</param>
+    /// smoothed value would hide the spikes this is watching for.</param>
     /// <param name="dutyPercent">The CPU fan's duty from this poll, in percent.</param>
+    /// <param name="nowMs">When this poll happened, as a monotonic millisecond timestamp; the app
+    /// passes <see cref="Environment.TickCount64"/>. Passed in rather than read here so this stays
+    /// a pure function of its inputs and its runs can be driven without anything sleeping.</param>
+    /// <param name="expectedPollIntervalMs">How often the caller is polling, in milliseconds -
+    /// <see cref="SensorPoller.IntervalMs"/>, which moves when the window is shown or hidden. Used
+    /// only to tell an ordinary poll from a late one; the runs themselves are pure elapsed
+    /// time.</param>
     /// <returns>What this poll asks for.</returns>
-    public WatchdogAction Observe(int cpuCelsius, int dutyPercent)
+    public WatchdogAction Observe(int cpuCelsius, int dutyPercent, long nowMs, int expectedPollIntervalMs)
     {
+        if (!ContinuesTheRun(nowMs, expectedPollIntervalMs))
+        {
+            _hot.End();
+            _cool.End();
+        }
+
+        _lastPollMs = nowMs;
+        _lastExpectedIntervalMs = expectedPollIntervalMs;
+        _hasPolled = true;
+
         if (!FanSafety.IsPlausibleTemperature(cpuCelsius))
         {
-            _dangerousPolls = 0;
-            _coolPolls = 0;
+            _hot.End();
+            _cool.End();
             return WatchdogAction.None;
         }
 
-        _dangerousPolls = IsDangerous(cpuCelsius, dutyPercent)
-            ? Math.Min(_dangerousPolls + 1, FanSafety.WatchdogPollsToFire)
-            : 0;
-        _coolPolls = cpuCelsius < FanSafety.WatchdogRearmTemperature
-            ? Math.Min(_coolPolls + 1, FanSafety.WatchdogPollsToRelease)
-            : 0;
+        _hot.Observe(IsDangerous(cpuCelsius, dutyPercent), nowMs);
+        _cool.Observe(cpuCelsius < FanSafety.WatchdogRearmTemperature, nowMs);
 
         if (Stage == WatchdogStage.None)
         {
-            if (_dangerousPolls < FanSafety.WatchdogPollsToFire) return WatchdogAction.None;
+            if (!_hot.HasLasted(FanSafety.WatchdogSecondsToFire, nowMs)) return WatchdogAction.None;
             Stage = WatchdogStage.Raised;
             _forcing = true;
             return WatchdogAction.Force;
@@ -201,10 +284,10 @@ public sealed class FanWatchdog
         // The sequence this watchdog asked for is still going out, so this poll is older than it.
         // Escalating on it would pin the fans at maximum on the strength of a duty read before the
         // gentler answer had been written at all, and handing them back on it would race the write
-        // that is still in flight. Nothing is lost by waiting: the runs keep counting.
+        // that is still in flight. Nothing is lost by waiting: the runs keep running.
         if (_forcing) return WatchdogAction.None;
 
-        if (_coolPolls >= FanSafety.WatchdogPollsToRelease)
+        if (_cool.HasLasted(FanSafety.WatchdogSecondsToRelease, nowMs))
         {
             Stage = WatchdogStage.None;
             return WatchdogAction.Release;
@@ -213,10 +296,50 @@ public sealed class FanWatchdog
         // Nothing lives above the last resort, so there is no third sequence to send.
         if (Stage != WatchdogStage.Raised) return WatchdogAction.None;
 
-        if (_dangerousPolls == 0) return WatchdogAction.None;
+        // This poll, not a run of them: the machine has already proved itself once and then had
+        // the gentler answer written to it without the duty moving.
+        if (!_hot.Running) return WatchdogAction.None;
         Stage = WatchdogStage.Maximum;
         _forcing = true;
         return WatchdogAction.Force;
+    }
+
+    /// <summary>
+    /// Whether a poll arriving at <paramref name="nowMs"/> is close enough behind the last one to
+    /// be extending the runs it left rather than interrupting them.
+    /// </summary>
+    /// <remarks>
+    /// Both halves of the answer are about a run being <em>watched</em> and not merely spanned.
+    ///
+    /// A gap wider than <see cref="FanSafety.WatchdogMaxPollGapFactor"/> intervals is a stretch of
+    /// time nothing looked at - a suspended machine, a starved UI thread, a dropped tick - and the
+    /// reading that ends it says only what is true now. Closing a five-second run on it would
+    /// force the fans on one sample; closing a fifteen-second one would hand them back on one.
+    ///
+    /// The allowance uses the wider of the two cadences because the rate legitimately changes
+    /// mid-run, by a factor of five, whenever the window is shown or hidden. The poll straight
+    /// after that change is late by one of the two and early by the other, and must not be read as
+    /// a gap either way round - a run that survives being watched more closely is still a run.
+    ///
+    /// A backwards jump - <paramref name="nowMs"/> before the last poll, or an elapsed time that
+    /// came out negative through overflow - is not a measurement at all. It errs the same way:
+    /// break the run and start again, which costs at worst one more run of the same length.
+    ///
+    /// The very first poll continues nothing, which is why it answers false. There are no runs
+    /// yet, so there is nothing for that to end.
+    /// </remarks>
+    private bool ContinuesTheRun(long nowMs, int expectedPollIntervalMs)
+    {
+        if (!_hasPolled) return false;
+
+        var elapsedMs = nowMs - _lastPollMs;
+        if (nowMs < _lastPollMs || elapsedMs < 0) return false;
+
+        // No cadence below the poller's own floor is real, so a caller reporting one cannot make
+        // every ordinary poll look like a gap and quietly switch the guard off.
+        var intervalMs = Math.Max(
+            SensorPoller.MinIntervalMs, Math.Max(_lastExpectedIntervalMs, expectedPollIntervalMs));
+        return elapsedMs <= (long)FanSafety.WatchdogMaxPollGapFactor * intervalMs;
     }
 
     /// <summary>Whether this poll shows a machine that is too hot with fans doing too little

@@ -39,11 +39,28 @@ public class AppServicesHotkeyModeTests : IDisposable
     /// <summary>The reading the watchdog counts: at the trigger temperature, fans doing little.</summary>
     private static SensorSnapshot Hot() => new(FanSafety.WatchdogTriggerTemperature, 50, 3000, 3000, 10, 10, true, null);
 
-    /// <summary>Runs the machine hot for the whole run the watchdog insists on before it will act,
-    /// which is what it now takes to reach the first stage.</summary>
-    private static async Task HotSpellAsync(MainViewModel vm)
+    /// <summary>The gap between polls here, which is the rate the view model's poller starts at:
+    /// the window has not been shown, so the app is in the tray.</summary>
+    private const int IntervalMs = 5000;
+
+    /// <summary>The monotonic clock the view model is handed, wound on a poll at a time. The
+    /// watchdog's runs are durations, so this is what moves them along - nothing sleeps.</summary>
+    private long _nowMs;
+
+    /// <summary>One poll, one interval after the last.</summary>
+    private async Task PollHotAsync(MainViewModel vm)
     {
-        for (var i = 0; i < FanSafety.WatchdogPollsToFire; i++) await vm.OnSensorPollAsync(Hot());
+        _nowMs += IntervalMs;
+        await vm.OnSensorPollAsync(Hot(), _nowMs);
+    }
+
+    /// <summary>Runs the machine hot for the whole run the watchdog insists on before it will act,
+    /// which is what it takes to reach the first stage.</summary>
+    private async Task HotSpellAsync(MainViewModel vm)
+    {
+        var startedMs = _nowMs + IntervalMs;
+        do { await PollHotAsync(vm); }
+        while (_nowMs - startedMs < FanSafety.WatchdogSecondsToFire * 1000L);
     }
 
     private (MainViewModel vm, AppSettings settings, Func<FanMode> cursor) Make(FanMode saved)
@@ -85,7 +102,7 @@ public class AppServicesHotkeyModeTests : IDisposable
         Assert.Equal(FanSafety.WatchdogFirstStageMode, vm.SelectedMode);
         Assert.Equal(FanSafety.WatchdogFirstStageMode, cursor());
 
-        await vm.OnSensorPollAsync(Hot());
+        await PollHotAsync(vm);
 
         // The window agrees the machine is at full, and so does the cursor the hotkeys read ...
         Assert.Equal(FanMode.Turbo, vm.SelectedMode);
@@ -100,7 +117,7 @@ public class AppServicesHotkeyModeTests : IDisposable
     {
         var (vm, settings, cursor) = Make(saved: FanMode.Quiet);
         await HotSpellAsync(vm);             // a sustained hot spell: the aggressive curve
-        await vm.OnSensorPollAsync(Hot());   // it did not lift the fans, so: full
+        await PollHotAsync(vm);              // it did not lift the fans, so: full
 
         // The whole path a real press takes, over the cursor the app hands the service.
         var raw = new FakeHotkeySource();

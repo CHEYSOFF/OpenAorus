@@ -84,11 +84,15 @@ public partial class MainViewModel : ObservableObject
         _s = services;
         _selectedMode = _s.Settings.Mode;
         _fixedPercent = _s.Settings.FixedPercent;
-        _poller = new SensorPoller(_s.Sensors, _s.Settings.PollIntervalHiddenMs);
+        _poller = new SensorPoller(_s.Sensors, PollIntervalMs);
         // Dropped rather than awaited: the poller raises this on the UI thread and has nowhere to
         // await it. A poll that forces Turbo runs a write sequence lasting a few seconds, and the
         // watchdog's own latch is what stops the next tick starting a second one on top of it.
-        _poller.Updated += snap => _ = OnSensorPollAsync(snap);
+        //
+        // This is the one place the running app reads a clock for the watchdog. Environment.TickCount64
+        // rather than DateTime: it is monotonic and does not move when the machine's wall clock is
+        // corrected, and a run of seconds measured against a clock that can jump is not a run.
+        _poller.Updated += snap => _ = OnSensorPollAsync(snap, Environment.TickCount64);
         // Subscribed at the controller rather than at each of the places that apply a mode -
         // startup, resume, --apply, a mode click - so a call site added later cannot forget to
         // re-arm. See FanWatchdog.NoteModeApplied for why the forced Turbo has to be let through.
@@ -236,8 +240,15 @@ public partial class MainViewModel : ObservableObject
         if (value == AppSection.Lighting && !LightingAvailable) SelectedSection = AppSection.Cooling;
     }
 
-    partial void OnIsWindowVisibleChanged(bool value) =>
-        _poller.SetInterval(value ? _s.Settings.PollIntervalVisibleMs : _s.Settings.PollIntervalHiddenMs);
+    /// <summary>How often the sensors should be read right now, in milliseconds.</summary>
+    /// <remarks>The window being open or in the tray is the whole of it, and the two intervals are
+    /// far apart - a second against five. That gap is why the watchdog measures its runs in
+    /// elapsed time rather than in polls: the same count of polls meant five times as long with
+    /// the window in the tray, which is where a background utility spends its life.</remarks>
+    private int PollIntervalMs =>
+        IsWindowVisible ? _s.Settings.PollIntervalVisibleMs : _s.Settings.PollIntervalHiddenMs;
+
+    partial void OnIsWindowVisibleChanged(bool value) => _poller.SetInterval(PollIntervalMs);
 
     /// <summary>
     /// Handles one sensor poll: publishes the reading, rolls it into the two numbers on screen,
@@ -255,14 +266,18 @@ public partial class MainViewModel : ObservableObject
     /// at a time in a test; <see cref="SensorPoller"/> is the only other caller.
     /// </remarks>
     /// <param name="snap">The reading this poll produced.</param>
-    public async Task OnSensorPollAsync(SensorSnapshot snap)
+    /// <param name="nowMs">When it was produced, as a monotonic millisecond timestamp; the running
+    /// app passes <see cref="Environment.TickCount64"/>. Passed in rather than read here so that
+    /// the watchdog's runs - which are durations - can be driven a poll at a time in a test
+    /// without any of it sleeping.</param>
+    public async Task OnSensorPollAsync(SensorSnapshot snap, long nowMs)
     {
         Sensors = snap;
         DisplayCpuTemp = _cpuDisplayTemp.Add(snap.CpuTemp);
         DisplayGpuTemp = _gpuDisplayTemp.Add(snap.GpuTemp);
         _bannerState.ReportSensorResult(snap.Ok, snap.Error);
         SyncBanner();
-        await RunWatchdogAsync(snap);
+        await RunWatchdogAsync(snap, nowMs);
     }
 
     /// <summary>
@@ -283,14 +298,14 @@ public partial class MainViewModel : ObservableObject
     /// Which mode goes out is <see cref="FanWatchdog"/>'s to say, and it says it three times over
     /// the life of one hot spell: the aggressive automatic curve first, then - only if a later
     /// poll's measured duty says that curve did not lift the fans - the fixed maximum, and finally
-    /// the owner's own mode once the machine has been demonstrably cool for a run of polls. This
+    /// the owner's own mode once the machine has been demonstrably cool for a run of seconds. This
     /// method's part is to write each of them and to tell the owner which one just happened,
     /// because "the fans were turned up", "the fans are at maximum" and "you have them back" are
     /// three different pieces of news.
     /// </para>
     /// <para>
     /// The hand-back is not a timer undoing the protection. It is gated on
-    /// <see cref="FanSafety.WatchdogPollsToRelease"/> consecutive polls below
+    /// <see cref="FanSafety.WatchdogSecondsToRelease"/> unbroken seconds below
     /// <see cref="FanSafety.WatchdogRearmTemperature"/> °C - three times the run it takes to
     /// engage - so by the time it fires the emergency is over by any reading. Leaving the machine
     /// pinned instead was the old answer, and it was the wrong one:
@@ -300,14 +315,18 @@ public partial class MainViewModel : ObservableObject
     /// </para>
     /// </remarks>
     /// <param name="snap">The reading this poll produced, raw.</param>
-    private async Task RunWatchdogAsync(SensorSnapshot snap)
+    /// <param name="nowMs">When it was produced, monotonic.</param>
+    private async Task RunWatchdogAsync(SensorSnapshot snap, long nowMs)
     {
         // The WMI writes are withheld on an unrecognised model, so there is nothing to force, no
         // override of ours to hand back, and no point saying so once a second on top of the banner
         // that already explains why.
         if (!CanWrite) return;
 
-        switch (_watchdog.Observe(snap.CpuTemp, snap.Fan1DutyPercent))
+        // The poller's own interval and not the setting behind it: the watchdog needs the cadence
+        // the app is really polling at to tell a late poll from an ordinary one, and the poller is
+        // the only thing that knows what it settled on.
+        switch (_watchdog.Observe(snap.CpuTemp, snap.Fan1DutyPercent, nowMs, _poller.IntervalMs))
         {
             case WatchdogAction.Force: await ForceFansAsync(snap); break;
             case WatchdogAction.Release: await ReleaseFansAsync(snap); break;
@@ -387,9 +406,9 @@ public partial class MainViewModel : ObservableObject
     /// <see cref="WatchdogStage.None"/> before returning <see cref="WatchdogAction.Release"/>, so
     /// the re-arm finds nothing left to undo, and a release is only ever offered from a stage - so
     /// it cannot produce another release. Getting back to a stage costs
-    /// <see cref="FanSafety.WatchdogPollsToFire"/> consecutive polls at
+    /// <see cref="FanSafety.WatchdogSecondsToFire"/> unbroken seconds at
     /// <see cref="FanSafety.WatchdogTriggerTemperature"/> °C, which is not something a machine
-    /// that has just spent <see cref="FanSafety.WatchdogPollsToRelease"/> polls below
+    /// that has just spent <see cref="FanSafety.WatchdogSecondsToRelease"/> seconds below
     /// <see cref="FanSafety.WatchdogRearmTemperature"/> °C is about to do.
     /// </para>
     /// <para>
@@ -410,8 +429,8 @@ public partial class MainViewModel : ObservableObject
             StatusLine = $"Fans handed back to {mode} at {snap.CpuTemp} °C";
             SetBanner(BannerKind.Info,
                 $"Fans handed back: the CPU has stayed below {FanSafety.WatchdogRearmTemperature} °C " +
-                $"for {FanSafety.WatchdogPollsToRelease} readings in a row, so your own {mode} setting " +
-                "is back on. The fans were only taken off you while the machine was genuinely hot.");
+                $"for {FanSafety.WatchdogSecondsToRelease} seconds, so your own {mode} setting is back " +
+                "on. The fans were only taken off you while the machine was genuinely hot.");
         }
         else
         {

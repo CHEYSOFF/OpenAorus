@@ -17,9 +17,18 @@ namespace OpenAorus.Hardware.Tests;
 /// keeps quiet.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Driven a poll at a time through <see cref="MainViewModel.OnSensorPollAsync"/> rather than
 /// through <see cref="SensorPoller"/>, which needs a dispatcher and a real clock. The poller's
 /// only job is to call that method; everything worth pinning is on this side of it.
+/// </para>
+/// <para>
+/// The clock is handed in with each poll and wound on by hand, so a fifteen-second run costs no
+/// wall-clock time and nothing here sleeps. It is wound on by <see cref="IntervalMs"/>, which is
+/// the rate the view model's own poller starts at - the window has not been shown, so the app is
+/// in the tray and reading the sensors every five seconds. That is the state the owner reported
+/// the bug from, and it is now the state these tests run in.
+/// </para>
 /// </remarks>
 public class MainViewModelWatchdogTests : IDisposable
 {
@@ -32,6 +41,13 @@ public class MainViewModelWatchdogTests : IDisposable
 
     /// <summary>Where the owner's machine actually sits while the fans are roaring for no reason.</summary>
     private const int Cool = 60;
+
+    /// <summary>The gap between polls here: <see cref="AppSettings.PollIntervalHiddenMs"/>, which
+    /// is what the view model's poller is set to until the window is shown.</summary>
+    private const int IntervalMs = 5000;
+
+    /// <summary>The monotonic clock the view model is handed, one poll at a time.</summary>
+    private long _nowMs;
 
     private (MainViewModel vm, FakeGigabyteWmi wmi, AppServices services) Make(
         ModelProfile? profile = null, FanMode saved = FanMode.Normal)
@@ -56,23 +72,46 @@ public class MainViewModelWatchdogTests : IDisposable
         return (new MainViewModel(services), wmi, services);
     }
 
-    private static SensorSnapshot Poll(int cpu, int duty, bool ok = true) =>
+    private static SensorSnapshot Reading(int cpu, int duty, bool ok = true) =>
         new(cpu, 50, 3000, 3000, duty, duty, ok, ok ? null : "getCpuTemp: failed (fake)");
 
-    /// <summary>Runs the machine hot for exactly as long as the watchdog now insists on before it
-    /// will force anything.</summary>
-    private static async Task HotSpellAsync(MainViewModel vm, int cpu = Hot, int duty = 10)
+    /// <summary>One poll, one interval after the last.</summary>
+    private async Task PollAsync(MainViewModel vm, int cpu, int duty, bool ok = true)
     {
-        for (var i = 0; i < FanSafety.WatchdogPollsToFire; i++)
-            await vm.OnSensorPollAsync(Poll(cpu, duty));
+        _nowMs += IntervalMs;
+        await vm.OnSensorPollAsync(Reading(cpu, duty, ok), _nowMs);
     }
 
-    /// <summary>Runs the machine cool for exactly as long as it takes to earn the fans back.</summary>
-    private static async Task CoolSpellAsync(MainViewModel vm, int cpu = Cool, int duty = 100)
+    /// <summary>Polls on cadence for <paramref name="seconds"/> of machine time.</summary>
+    private async Task PollForAsync(MainViewModel vm, int seconds, int cpu, int duty, bool ok = true)
     {
-        for (var i = 0; i < FanSafety.WatchdogPollsToRelease; i++)
-            await vm.OnSensorPollAsync(Poll(cpu, duty));
+        var untilMs = _nowMs + seconds * 1000L;
+        while (_nowMs < untilMs) await PollAsync(vm, cpu, duty, ok);
     }
+
+    /// <summary>Polls the same reading until <paramref name="seconds"/> have elapsed since the run
+    /// began, which is the poll that is allowed to act on it.</summary>
+    private async Task RunForAsync(MainViewModel vm, int seconds, int cpu, int duty)
+    {
+        var startedMs = _nowMs + IntervalMs;
+        do { await PollAsync(vm, cpu, duty); } while (_nowMs - startedMs < seconds * 1000L);
+    }
+
+    /// <summary>The same, stopping one poll short of the one that would act.</summary>
+    private async Task AlmostRunForAsync(MainViewModel vm, int seconds, int cpu, int duty)
+    {
+        var startedMs = _nowMs + IntervalMs;
+        while (_nowMs + IntervalMs - startedMs < seconds * 1000L) await PollAsync(vm, cpu, duty);
+    }
+
+    /// <summary>Runs the machine hot for exactly as long as the watchdog insists on before it will
+    /// force anything.</summary>
+    private Task HotSpellAsync(MainViewModel vm, int cpu = Hot, int duty = 10) =>
+        RunForAsync(vm, FanSafety.WatchdogSecondsToFire, cpu, duty);
+
+    /// <summary>Runs the machine cool for exactly as long as it takes to earn the fans back.</summary>
+    private Task CoolSpellAsync(MainViewModel vm, int cpu = Cool, int duty = 100) =>
+        RunForAsync(vm, FanSafety.WatchdogSecondsToRelease, cpu, duty);
 
     /// <summary>Whether the Gaming write sequence went out - the aggressive automatic curve is the
     /// one mode that sets SetAutoFanStatus to 1.</summary>
@@ -108,11 +147,10 @@ public class MainViewModelWatchdogTests : IDisposable
     {
         var (vm, wmi, _) = Make();
 
-        // The owner's complaint, in one test. One or two polls in the 90s is what this CPU does
+        // The owner's complaint, in one test. A second or two in the 90s is what this CPU does
         // all day; it is not a reason to pin the fans at anything.
-        for (var i = 0; i < FanSafety.WatchdogPollsToFire - 1; i++)
-            await vm.OnSensorPollAsync(Poll(cpu: 110, duty: 10));
-        await vm.OnSensorPollAsync(Poll(cpu: Cool, duty: 30));
+        await AlmostRunForAsync(vm, FanSafety.WatchdogSecondsToFire, cpu: 110, duty: 10);
+        await PollAsync(vm, cpu: Cool, duty: 30);
 
         Assert.Empty(wmi.Calls);
         Assert.Equal(BannerKind.None, vm.Banner);
@@ -128,7 +166,7 @@ public class MainViewModelWatchdogTests : IDisposable
 
         // Gaming has landed and the CPU fan is still reading below the duty floor, so whatever
         // that curve does up here, it is not doing it here. Last resort.
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 10));
+        await PollAsync(vm, cpu: 99, duty: 10);
 
         Assert.True(PinnedFansAtMaximum(wmi));
         Assert.Equal(FanMode.Turbo, vm.SelectedMode);
@@ -146,7 +184,7 @@ public class MainViewModelWatchdogTests : IDisposable
         var raised = vm.BannerText;
         var raisedStatus = vm.StatusLine;
 
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 10));
+        await PollAsync(vm, cpu: 99, duty: 10);
 
         // "The fans were turned up" and "the fans are at maximum until the machine cools" are
         // different pieces of news, and the owner has to be able to tell which one they got.
@@ -165,8 +203,8 @@ public class MainViewModelWatchdogTests : IDisposable
 
         // Still hot, but the fans are now doing the work. Pinning them at maximum would buy
         // nothing and cost the temperature tracking.
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: FanSafety.WatchdogDutyFloor));
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 100));
+        await PollAsync(vm, cpu: 99, duty: FanSafety.WatchdogDutyFloor);
+        await PollAsync(vm, cpu: 99, duty: 100);
 
         Assert.Empty(wmi.Calls);
         Assert.Equal(FanMode.Gaming, vm.SelectedMode);
@@ -178,10 +216,9 @@ public class MainViewModelWatchdogTests : IDisposable
         var (vm, wmi, _) = Make();
 
         // Half a minute of a machine at 97 °C whose fans never come up. The two stages are the
-        // only write sequences allowed out in that time - anything more is the per-second
-        // re-drive the latch exists to prevent.
-        for (var poll = 0; poll < 30; poll++)
-            await vm.OnSensorPollAsync(Poll(cpu: Hot, duty: 10));
+        // only write sequences allowed out in that time - anything more is the per-poll re-drive
+        // the latch exists to prevent.
+        await PollForAsync(vm, seconds: 30, cpu: Hot, duty: 10);
 
         Assert.Equal(1, wmi.Calls.Count(c => c.Method == "SetAutoFanStatus" && c.Data == 1));
         Assert.Equal(1, wmi.Calls.Count(c => c.Method == "SetFixedFanSpeed" && c.Data == 229));
@@ -193,13 +230,13 @@ public class MainViewModelWatchdogTests : IDisposable
     {
         var (vm, _, _) = Make();
         await HotSpellAsync(vm);
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 10));
+        await PollAsync(vm, cpu: 99, duty: 10);
 
-        await vm.OnSensorPollAsync(Poll(cpu: 70, duty: 100));
-        await vm.OnSensorPollAsync(Poll(cpu: 55, duty: 40));
+        await PollAsync(vm, cpu: 70, duty: 100);
+        await PollAsync(vm, cpu: 55, duty: 40);
 
-        // Two cool polls are not the fifteen it takes to hand the fans back, so the fans are
-        // still at maximum - and nothing may quietly stop saying so while they are.
+        // Two cool polls are not the fifteen seconds it takes to hand the fans back, so the fans
+        // are still at maximum - and nothing may quietly stop saying so while they are.
         Assert.Contains("Fans forced to maximum", vm.BannerText);
     }
 
@@ -208,8 +245,7 @@ public class MainViewModelWatchdogTests : IDisposable
     {
         var (vm, wmi, _) = Make();
 
-        for (var poll = 0; poll < 30; poll++)
-            await vm.OnSensorPollAsync(Poll(cpu: 0, duty: 0, ok: false));
+        await PollForAsync(vm, seconds: 30, cpu: 0, duty: 0, ok: false);
 
         Assert.Empty(wmi.Calls);
         Assert.DoesNotContain("Fans raised", vm.BannerText);
@@ -221,8 +257,7 @@ public class MainViewModelWatchdogTests : IDisposable
     {
         var (vm, wmi, _) = Make();
 
-        for (var poll = 0; poll < 30; poll++)
-            await vm.OnSensorPollAsync(Poll(cpu: 62, duty: 30));
+        await PollForAsync(vm, seconds: 30, cpu: 62, duty: 30);
 
         // Never held, so there is nothing to hand back either - a machine that was always cool
         // must not have a mode written to it just for being cool.
@@ -235,8 +270,7 @@ public class MainViewModelWatchdogTests : IDisposable
     {
         var (vm, wmi, _) = Make();
 
-        for (var poll = 0; poll < 30; poll++)
-            await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 100));
+        await PollForAsync(vm, seconds: 30, cpu: 99, duty: 100);
 
         Assert.Empty(wmi.Calls);
     }
@@ -297,7 +331,7 @@ public class MainViewModelWatchdogTests : IDisposable
         await services.ApplySavedAsync();
         wmi.Calls.Clear();
 
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 10));
+        await PollAsync(vm, cpu: 99, duty: 10);
 
         // Re-armed, and re-armed to the beginning: the escalation starts over from the stage that
         // still tracks temperature, not from the one that stopped.
@@ -316,11 +350,11 @@ public class MainViewModelWatchdogTests : IDisposable
         wmi.Calls.Clear();
         wmi.FailOn.Clear();
 
-        await vm.OnSensorPollAsync(Poll(cpu: 98, duty: 10));
+        await PollAsync(vm, cpu: 98, duty: 10);
 
         // The first stage never reached the controller, so the retry is the first stage again -
         // there is nothing yet to escalate away from - and it is the very next poll, not five
-        // polls later, because the machine already proved itself sustained.
+        // seconds later, because the machine already proved itself sustained.
         Assert.True(RaisedFans(wmi));
         Assert.Contains("Fans raised", vm.BannerText);
     }
@@ -332,8 +366,8 @@ public class MainViewModelWatchdogTests : IDisposable
         wmi.FailOn.Add("SetAutoFanStatus");
 
         await HotSpellAsync(vm);                                  // the run, ending in the first attempt
-        await vm.OnSensorPollAsync(Poll(cpu: 98, duty: 10));
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 10));
+        await PollAsync(vm, cpu: 98, duty: 10);
+        await PollAsync(vm, cpu: 99, duty: 10);
 
         // Every poll past the run retries - that is the point of not latching on a failure ...
         Assert.Equal(3, wmi.Calls.Count(c => c.Method == "SetAutoFanStatus"));
@@ -353,7 +387,7 @@ public class MainViewModelWatchdogTests : IDisposable
         // Fill the display's window with a cool machine, then get genuinely hot. The average is
         // still weighed down by the cool samples that have not walked out of the window yet.
         for (var i = 0; i < TemperatureAverage.DisplaySamples; i++)
-            await vm.OnSensorPollAsync(Poll(cpu: Cool, duty: 30));
+            await PollAsync(vm, cpu: Cool, duty: 30);
 
         await HotSpellAsync(vm);
 
@@ -395,7 +429,7 @@ public class MainViewModelWatchdogTests : IDisposable
     {
         var (vm, wmi, _) = Make(saved: FanMode.Quiet);
         await HotSpellAsync(vm);
-        await vm.OnSensorPollAsync(Poll(cpu: 99, duty: 10));
+        await PollAsync(vm, cpu: 99, duty: 10);
         Assert.Equal(FanMode.Turbo, vm.SelectedMode);
         wmi.Calls.Clear();
 
@@ -414,8 +448,7 @@ public class MainViewModelWatchdogTests : IDisposable
         await HotSpellAsync(vm);
         wmi.Calls.Clear();
 
-        for (var poll = 0; poll < FanSafety.WatchdogPollsToRelease - 1; poll++)
-            await vm.OnSensorPollAsync(Poll(cpu: Cool, duty: 100));
+        await AlmostRunForAsync(vm, FanSafety.WatchdogSecondsToRelease, cpu: Cool, duty: 100);
 
         Assert.Empty(wmi.Calls);
         Assert.Equal(FanMode.Gaming, vm.SelectedMode);
@@ -431,8 +464,7 @@ public class MainViewModelWatchdogTests : IDisposable
         // Two minutes of a cool machine. Restoring the owner's mode is itself an apply and an
         // apply re-arms the watchdog, so this is the shape that could have looped: exactly one
         // hand-back write sequence is allowed out, and then nothing.
-        for (var poll = 0; poll < 120; poll++)
-            await vm.OnSensorPollAsync(Poll(cpu: Cool, duty: 100));
+        await PollForAsync(vm, seconds: 120, cpu: Cool, duty: 100);
 
         Assert.Equal(1, wmi.Calls.Count(c => c.Method == "SetFixedFanStatus" && c.Data == 0));
         Assert.Equal(FanMode.Quiet, vm.SelectedMode);

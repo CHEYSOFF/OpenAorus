@@ -47,15 +47,29 @@ public class MainViewModelDisplayTemperatureTests : IDisposable
         });
     }
 
-    private static SensorSnapshot Poll(int cpu, int gpu, bool ok = true) =>
+    private static SensorSnapshot Reading(int cpu, int gpu, bool ok = true) =>
         new(cpu, gpu, 3000, 3000, 100, 100, ok, ok ? null : "getCpuTemp: failed (fake)");
+
+    /// <summary>The gap between polls here, and the monotonic clock the view model is handed.</summary>
+    /// <remarks>The display average counts samples and does not care what the clock says, but a
+    /// poll has a time and the watchdog on the other side of the same method is measured in
+    /// seconds - so these are fed at a plausible cadence rather than all at once.</remarks>
+    private const int IntervalMs = 5000;
+    private long _nowMs;
+
+    /// <summary>One poll, one interval after the last.</summary>
+    private async Task PollAsync(MainViewModel vm, int cpu, int gpu, bool ok = true)
+    {
+        _nowMs += IntervalMs;
+        await vm.OnSensorPollAsync(Reading(cpu, gpu, ok), _nowMs);
+    }
 
     [Fact]
     public async Task The_first_reading_is_shown_as_it_is()
     {
         var vm = Make();
 
-        await vm.OnSensorPollAsync(Poll(cpu: 55, gpu: 45));
+        await PollAsync(vm, cpu: 55, gpu: 45);
 
         // Nothing to average with yet, and an owner opening the window should not be shown a
         // number that has to warm up.
@@ -68,9 +82,9 @@ public class MainViewModelDisplayTemperatureTests : IDisposable
     {
         var vm = Make();
         for (var i = 0; i < TemperatureAverage.DisplaySamples; i++)
-            await vm.OnSensorPollAsync(Poll(cpu: 60, gpu: 50));
+            await PollAsync(vm, cpu: 60, gpu: 50);
 
-        await vm.OnSensorPollAsync(Poll(cpu: 100, gpu: 50));
+        await PollAsync(vm, cpu: 100, gpu: 50);
 
         // The owner's actual complaint about the display: this CPU boosts to 100 °C for one poll
         // constantly, and a field following it exactly is a flicker rather than a reading.
@@ -84,11 +98,11 @@ public class MainViewModelDisplayTemperatureTests : IDisposable
     {
         var vm = Make();
         for (var i = 0; i < TemperatureAverage.DisplaySamples; i++)
-            await vm.OnSensorPollAsync(Poll(cpu: 50, gpu: 40));
+            await PollAsync(vm, cpu: 50, gpu: 40);
         Assert.Equal(50, vm.DisplayCpuTemp);
 
         for (var i = 0; i < TemperatureAverage.DisplaySamples; i++)
-            await vm.OnSensorPollAsync(Poll(cpu: 85, gpu: 75));
+            await PollAsync(vm, cpu: 85, gpu: 75);
 
         // Smoothed, not stuck. A window's worth of a hotter machine and the number is there.
         Assert.Equal(85, vm.DisplayCpuTemp);
@@ -100,8 +114,8 @@ public class MainViewModelDisplayTemperatureTests : IDisposable
     {
         var vm = Make();
 
-        await vm.OnSensorPollAsync(Poll(cpu: 90, gpu: 40));
-        await vm.OnSensorPollAsync(Poll(cpu: 90, gpu: 40));
+        await PollAsync(vm, cpu: 90, gpu: 40);
+        await PollAsync(vm, cpu: 90, gpu: 40);
 
         Assert.Equal(90, vm.DisplayCpuTemp);
         Assert.Equal(40, vm.DisplayGpuTemp);
@@ -111,9 +125,9 @@ public class MainViewModelDisplayTemperatureTests : IDisposable
     public async Task A_dropped_read_does_not_make_the_number_dive_to_zero()
     {
         var vm = Make();
-        await vm.OnSensorPollAsync(Poll(cpu: 70, gpu: 60));
+        await PollAsync(vm, cpu: 70, gpu: 60);
 
-        await vm.OnSensorPollAsync(Poll(cpu: 0, gpu: 0, ok: false));
+        await PollAsync(vm, cpu: 0, gpu: 0, ok: false);
 
         // A failed WMI read surfaces as 0, which is not a temperature. The banner says the read
         // failed in its own words; the display holds the last thing it actually knew.
@@ -129,9 +143,9 @@ public class MainViewModelDisplayTemperatureTests : IDisposable
     {
         var vm = Make();
         for (var i = 0; i < TemperatureAverage.DisplaySamples; i++)
-            await vm.OnSensorPollAsync(Poll(cpu: 60, gpu: 50));
+            await PollAsync(vm, cpu: 60, gpu: 50);
 
-        await vm.OnSensorPollAsync(Poll(cpu: 100, gpu: 50));
+        await PollAsync(vm, cpu: 100, gpu: 50);
 
         // It is the same number in a smaller place, and a tooltip that disagreed with the window
         // it belongs to would just look broken.
