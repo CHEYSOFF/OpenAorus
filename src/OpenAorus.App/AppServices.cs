@@ -4,6 +4,7 @@ using OpenAorus.Hardware.Battery;
 using OpenAorus.Hardware.Config;
 using OpenAorus.Hardware.Diagnostics;
 using OpenAorus.Hardware.Fans;
+using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Lighting;
 using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Sensors;
@@ -29,6 +30,13 @@ public sealed class AppServices
     public required bool KeyboardPresent { get; init; }
     public required string Version { get; init; }
     public required string ExePath { get; init; }
+
+    /// <summary>What the two hotkey channels have seen, shared by whatever opens them and read
+    /// back by <see cref="WriteDiagnostics"/>.</summary>
+    /// <remarks>Owned here rather than by the channels so a dump exported after the fact still
+    /// carries them: "nothing has arrived" is the answer that separates a report this app misread
+    /// from a chassis that never sent one, and neither is visible any other way.</remarks>
+    public HotkeyTrace Hotkeys { get; init; } = new();
 
     public static AppServices Create()
     {
@@ -105,7 +113,7 @@ public sealed class AppServices
 
     public string WriteDiagnostics()
     {
-        var text = DiagnosticsDump.Render(Wmi, Profile, Version);
+        var text = DiagnosticsDump.Render(Wmi, Profile, Version, Hotkeys);
         var dir = Path.GetDirectoryName(Store.Path)!;
         Directory.CreateDirectory(dir);
         var safe = string.Concat(Profile.Name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Replace(' ', '-');

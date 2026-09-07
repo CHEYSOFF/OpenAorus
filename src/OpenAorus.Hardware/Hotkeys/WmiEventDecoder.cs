@@ -62,9 +62,17 @@ public static class WmiEventDecoder
     /// unknown in a pure function a test can exercise, instead of in a catch block inside the
     /// listener that no test can reach. VERIFY 8.1 is what settles the type.</remarks>
     public static HotkeyEvent? Decode(object? value) =>
-        TryReadInt32(value, out var data) ? Decode(data) : null;
+        TryReadData(value, out var data) ? Decode(data) : null;
 
-    private static bool TryReadInt32(object? value, out int data)
+    /// <summary>Reads one event's <c>Data</c> property as the integer it is supposed to be.</summary>
+    /// <param name="value">The property's value, or null when the event carried no such property.</param>
+    /// <param name="data">The value, when it is one this app can read; 0 otherwise.</param>
+    /// <returns>True if the value was an integer this app can read.</returns>
+    /// <remarks>Public because the listener needs the number itself, not only what it decodes to,
+    /// and the alternative down there is a <c>Convert.ToInt32</c> in a catch block: that would
+    /// coerce <c>"202"</c> and <c>202.0</c> into a keypress, which is exactly the guessing this
+    /// class refuses, and would do it where no test could see it.</remarks>
+    public static bool TryReadData(object? value, out int data)
     {
         data = 0;
 

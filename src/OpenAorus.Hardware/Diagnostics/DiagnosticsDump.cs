@@ -1,4 +1,5 @@
 using System.Text;
+using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Wmi;
 
@@ -24,13 +25,27 @@ public static class DiagnosticsDump
         "GetPEG2orSG2", "GetDynamicBoostStatus",
     };
 
-    public static string Render(IGigabyteWmi wmi, ModelProfile profile, string appVersion)
+    /// <summary>Renders the whole dump.</summary>
+    /// <param name="wmi">The WMI channel to read through.</param>
+    /// <param name="profile">The detected model.</param>
+    /// <param name="appVersion">The running version.</param>
+    /// <param name="hotkeys">What the hotkey channels have seen, if they are wired up. Near the
+    /// top on purpose: when an Fn key does nothing, whether the report arrived at all is the
+    /// first thing worth knowing, and the only thing that separates a misread report from a
+    /// chassis that never sent one.</param>
+    /// <returns>The dump text.</returns>
+    public static string Render(IGigabyteWmi wmi, ModelProfile profile, string appVersion, HotkeyTrace? hotkeys = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"OpenAorus {appVersion} diagnostics - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"Model: {profile.Name} ({profile.Status}, DutyMax={profile.DutyMax}, Fans={profile.FanCount})");
         sb.AppendLine($"OS: {Environment.OSVersion}");
         sb.AppendLine();
+        if (hotkeys is not null)
+        {
+            sb.Append(hotkeys.Render());
+            sb.AppendLine();
+        }
         sb.AppendLine("GB_WMIACPI_Get:");
         foreach (var m in GetMethods)
         {

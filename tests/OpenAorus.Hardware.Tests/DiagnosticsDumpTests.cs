@@ -1,4 +1,5 @@
 using OpenAorus.Hardware.Diagnostics;
+using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Profiles;
 
 namespace OpenAorus.Hardware.Tests;
@@ -30,5 +31,30 @@ public class DiagnosticsDumpTests
         Assert.Contains("GetChargeStop", DiagnosticsDump.GetMethods);
         Assert.DoesNotContain(DiagnosticsDump.GetMethods, m => m.StartsWith("Set"));
         Assert.DoesNotContain("GetFanIndexValue", DiagnosticsDump.GetMethods); // needs an Index arg
+    }
+
+    [Fact]
+    public void Render_carries_what_the_hotkey_channels_saw()
+    {
+        // The bug report is where a rejected report has to surface. Without this, a report that
+        // arrives and decodes to nothing is indistinguishable from a chassis that sent none -
+        // and those two have opposite fixes.
+        var trace = new HotkeyTrace();
+        trace.RecordReport(new byte[] { 4, 1, 12, 38 });
+        trace.RecordUnreadablePacket(36);
+
+        var text = DiagnosticsDump.Render(new FakeGigabyteWmi(), ModelProfile.Detect("AORUS 17G KD"), "0.1.0-test", trace);
+
+        Assert.Contains("Hotkey channels: reports=1", text);
+        Assert.Contains("04 01 0C 26", text);
+        Assert.Contains("unreadable", text);
+    }
+
+    [Fact]
+    public void Render_without_a_trace_says_nothing_about_hotkeys()
+    {
+        var text = DiagnosticsDump.Render(new FakeGigabyteWmi(), ModelProfile.Detect("AORUS 17G KD"), "0.1.0-test");
+
+        Assert.DoesNotContain("Hotkey channels", text);
     }
 }

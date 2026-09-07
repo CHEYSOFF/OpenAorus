@@ -173,4 +173,40 @@ public class WmiEventDecoderTests
         for (var data = -8; data < 1024; data++)
             Assert.Equal(WmiEventDecoder.Decode(data), WmiEventDecoder.Decode((object)data));
     }
+
+    [Fact]
+    public void The_listener_reads_the_value_through_the_same_pure_conversion()
+    {
+        // WmiEventListener needs the number itself, not only what it decodes to, and the only
+        // other way to get it down there is a Convert.ToInt32 in a catch block that no test can
+        // reach. Everything the conversion accepts, it accepts identically for both callers.
+        Assert.True(WmiEventDecoder.TryReadData(202, out var boxedInt));
+        Assert.Equal(202, boxedInt);
+        Assert.True(WmiEventDecoder.TryReadData((ushort)458, out var boxedUshort));
+        Assert.Equal(458, boxedUshort);
+        Assert.True(WmiEventDecoder.TryReadData(194L, out var boxedLong));
+        Assert.Equal(194, boxedLong);
+    }
+
+    [Fact]
+    public void The_conversion_refuses_what_the_decoder_refuses_rather_than_coercing_it()
+    {
+        // Convert.ToInt32 would turn every one of these into a keypress or an exception on a
+        // callback thread. A value of the wrong shape means the property is not what this app
+        // assumed, and that belongs in the trace as an unreadable event, not in a coercion.
+        foreach (var value in new object?[] { null, "202", 202.0, 202m, true, ulong.MaxValue, new object() })
+        {
+            Assert.False(WmiEventDecoder.TryReadData(value, out var data), $"{value ?? "null"}");
+            Assert.Equal(0, data);
+        }
+    }
+
+    [Fact]
+    public void The_conversion_and_the_boxed_decode_never_disagree()
+    {
+        foreach (var value in new object?[] { null, 202, 458, 450, 194, 0, -1, "202", 7.5, uint.MaxValue, (byte)202 })
+            Assert.Equal(
+                WmiEventDecoder.TryReadData(value, out var data) ? WmiEventDecoder.Decode(data) : null,
+                WmiEventDecoder.Decode(value));
+    }
 }
