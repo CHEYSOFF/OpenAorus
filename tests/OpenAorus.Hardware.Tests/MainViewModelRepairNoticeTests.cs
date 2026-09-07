@@ -86,6 +86,38 @@ public class MainViewModelRepairNoticeTests : IDisposable
     }
 
     [Fact]
+    public void A_repaired_hotkey_setting_is_named_in_the_notice()
+    {
+        var vm = FromSettingsFile("{ \"Hotkeys\": { \"OverlaySeconds\": 0 } }");
+
+        Assert.Equal(BannerKind.Warning, vm.Banner);
+        Assert.Contains("hotkey", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(HotkeySettings.MaxOverlaySeconds.ToString(), vm.BannerText);
+        // Naming the wrong half is the mistake this notice was split up to avoid.
+        Assert.DoesNotContain("lighting", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("curve", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_fan_repair_does_not_start_talking_about_hotkeys()
+    {
+        var vm = FromSettingsFile("{ \"Mode\": \"Fixed\", \"FixedPercent\": 0 }");
+
+        Assert.DoesNotContain("hotkey", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("overlay", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_settled_file_with_hotkeys_in_it_raises_no_notice()
+    {
+        var vm = FromSettingsFile(
+            "{ \"Hotkeys\": { \"Enabled\": true, \"OverlayForFanMode\": true, \"OverlaySeconds\": 3 } }");
+
+        Assert.Equal(BannerKind.None, vm.Banner);
+        Assert.Equal("", vm.BannerText);
+    }
+
+    [Fact]
     public void A_settled_file_raises_no_notice_at_all()
     {
         var vm = FromSettingsFile("{ \"Mode\": \"Gaming\", \"FixedPercent\": 45 }");

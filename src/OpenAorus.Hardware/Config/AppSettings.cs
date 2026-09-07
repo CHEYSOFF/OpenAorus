@@ -5,6 +5,7 @@ namespace OpenAorus.Hardware.Config;
 public sealed class AppSettings
 {
     private LightingSettings _lighting = new();
+    private HotkeySettings _hotkeys = new();
     private List<FanCurvePoint> _curve = FanCurve.Default.Points.ToList();
 
     public FanMode Mode { get; set; } = FanMode.Normal;
@@ -31,6 +32,15 @@ public sealed class AppSettings
     {
         get => _lighting;
         set => _lighting = value ?? new LightingSettings();
+    }
+
+    /// <summary>Fn hotkeys and the overlay. Never null: a file written with <c>"Hotkeys": null</c>,
+    /// or one from v0.1 or v0.2 that has no hotkey section at all, still loads with usable
+    /// defaults - the channels on and every overlay off.</summary>
+    public HotkeySettings Hotkeys
+    {
+        get => _hotkeys;
+        set => _hotkeys = value ?? new HotkeySettings();
     }
 
     public FanCurve ToCurve() => new(Curve);

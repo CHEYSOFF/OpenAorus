@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using OpenAorus.Hardware.Config;
 using OpenAorus.Hardware.Fans;
 using OpenAorus.Hardware.Sensors;
 using OpenAorus.Hardware.Ui;
@@ -85,6 +86,10 @@ public partial class MainViewModel : ObservableObject
                 parts.Add("Saved fan settings could have left the fans too slow to cool the machine: a Fixed duty " +
                           $"below {FanSafety.MinFixedPercent} % has been raised to it, and a custom curve that does " +
                           "not ramp up when hot has been replaced with the default curve.");
+            if (_s.Store.LastLoadHotkeysRepaired)
+                parts.Add("A saved hotkey overlay duration was outside the range the app accepts and has been " +
+                          $"brought back inside {HotkeySettings.MinOverlaySeconds}-" +
+                          $"{HotkeySettings.MaxOverlaySeconds} seconds.");
             parts.Add("Everything else in your settings was kept.");
 
             _bannerState.ReportOverrideNotice(BannerKind.Warning, string.Join(" ", parts));

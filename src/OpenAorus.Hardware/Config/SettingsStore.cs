@@ -23,11 +23,11 @@ public sealed class SettingsStore
     public bool LastLoadWasReset { get; private set; }
 
     /// <summary>True after a call to <see cref="Load"/> that read the file fine but had to replace
-    /// values inside it that the hardware layer would not accept - see <see cref="LightingSettings.Repair"/>
-    /// and <see cref="AppSettings.RepairFans"/>.
+    /// values inside it that the hardware layer would not accept - see <see cref="LightingSettings.Repair"/>,
+    /// <see cref="AppSettings.RepairFans"/> and <see cref="HotkeySettings.Repair"/>.
     /// The rest of the file survives, so this is a milder notice than <see cref="LastLoadWasReset"/>,
     /// but the owner still had settings changed under them and is told for the same reason.</summary>
-    public bool LastLoadRepaired => LastLoadLightingRepaired || LastLoadFansRepaired;
+    public bool LastLoadRepaired => LastLoadLightingRepaired || LastLoadFansRepaired || LastLoadHotkeysRepaired;
 
     /// <summary>The lighting half of <see cref="LastLoadRepaired"/>. Split out so the notice can
     /// name what actually changed instead of blaming lighting for a fan repair.</summary>
@@ -38,6 +38,11 @@ public sealed class SettingsStore
     /// replaced with <see cref="Fans.FanCurve.Default"/>.</summary>
     public bool LastLoadFansRepaired { get; private set; }
 
+    /// <summary>The hotkey half of <see cref="LastLoadRepaired"/>: an overlay duration outside
+    /// <see cref="HotkeySettings.MinOverlaySeconds"/> to <see cref="HotkeySettings.MaxOverlaySeconds"/>
+    /// brought back inside it.</summary>
+    public bool LastLoadHotkeysRepaired { get; private set; }
+
     public SettingsStore(string path) => Path = path;
 
     public AppSettings Load()
@@ -45,6 +50,7 @@ public sealed class SettingsStore
         LastLoadWasReset = false;
         LastLoadLightingRepaired = false;
         LastLoadFansRepaired = false;
+        LastLoadHotkeysRepaired = false;
         if (!File.Exists(Path)) return new AppSettings();
         try
         {
@@ -55,6 +61,7 @@ public sealed class SettingsStore
                 ?? throw new JsonException("The settings file holds no settings object.");
             LastLoadLightingRepaired = settings.Lighting.Repair();
             LastLoadFansRepaired = settings.RepairFans();
+            LastLoadHotkeysRepaired = settings.Hotkeys.Repair();
             return settings;
         }
         catch (Exception)

@@ -16,6 +16,12 @@ namespace OpenAorus.Hardware.Config;
 /// <see cref="Hotkeys.HotkeyPolicy"/> refuses them whatever is set here. A switch would promise
 /// something the policy will not do.
 /// </para>
+/// <para>
+/// Like the lighting and fan settings, everything here arrives from a file on disk that anyone
+/// can edit and that older or newer versions of the app may have written, so <see cref="Repair"/>
+/// exists to bring a loaded instance back inside the range the app accepts.
+/// <see cref="SettingsStore.Load"/> calls it; nothing else needs to.
+/// </para>
 /// </remarks>
 public sealed class HotkeySettings
 {
@@ -44,4 +50,33 @@ public sealed class HotkeySettings
 
     /// <summary>How long the overlay stays up, in seconds.</summary>
     public int OverlaySeconds { get; set; } = MinOverlaySeconds;
+
+    /// <summary>
+    /// Replaces any value that could not have come from this app with its nearest legal one, and
+    /// reports whether it had to.
+    /// </summary>
+    /// <remarks>
+    /// The same job and the same call site as <see cref="LightingSettings.Repair"/> and
+    /// <see cref="AppSettings.RepairFans"/>: one choke point in <see cref="SettingsStore.Load"/>,
+    /// one notice, no second mechanism with its own way of speaking up.
+    ///
+    /// Only the duration is repairable, and that is the whole of it. A saved zero or a negative
+    /// would put a card on screen that never comes down, and a saved thousand would do the same
+    /// for long enough to be indistinguishable; both have an obvious nearest legal value, so both
+    /// are clamped rather than reset. The four toggles are booleans with no out-of-range state to
+    /// find, and <see cref="Enabled"/> is likewise, so "repairing" any of them could only mean
+    /// quietly undoing a choice the owner made.
+    ///
+    /// The return value drives the notice that tells the owner, so this stays honest about having
+    /// changed nothing.
+    /// </remarks>
+    /// <returns>True if any value was replaced.</returns>
+    public bool Repair()
+    {
+        var clamped = Math.Clamp(OverlaySeconds, MinOverlaySeconds, MaxOverlaySeconds);
+        if (clamped == OverlaySeconds) return false;
+
+        OverlaySeconds = clamped;
+        return true;
+    }
 }
