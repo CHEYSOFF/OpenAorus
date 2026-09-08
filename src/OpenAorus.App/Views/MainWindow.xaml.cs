@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using OpenAorus.App.ViewModels;
 
 namespace OpenAorus.App.Views;
@@ -61,14 +63,53 @@ public partial class MainWindow : Window
         Hide();
     }
 
+    /// <summary>
+    /// Decides what a click on the tray icon should do.
+    /// </summary>
+    /// <remarks>
+    /// Hiding on "visible" alone is what made the icon need two clicks. A window the owner has
+    /// clicked away from is still visible, just behind something - so the first click hid what
+    /// they were trying to raise and the second one brought it back. Foreground is the condition
+    /// that matches the intent: hide the window you are looking at, raise the one you are not.
+    /// </remarks>
+    /// <param name="isVisible">Whether the window is shown at all.</param>
+    /// <param name="isMinimized">Whether it is minimised.</param>
+    /// <param name="isForeground">Whether it is the window with focus.</param>
+    /// <returns>True to hide it, false to raise it.</returns>
+    internal static bool ShouldHideOnTrayClick(bool isVisible, bool isMinimized, bool isForeground) =>
+        isVisible && !isMinimized && isForeground;
+
     public void ToggleVisibility()
     {
-        if (IsVisible && WindowState != WindowState.Minimized) { Hide(); return; }
+        if (ShouldHideOnTrayClick(IsVisible, WindowState == WindowState.Minimized, IsForeground()))
+        {
+            Hide();
+            return;
+        }
+
         PlaceNearTray();
         Show();
         WindowState = WindowState.Normal;
         Activate();
+
+        // Windows refuses foreground to a process the user did not just interact with, and a tray
+        // click counts as interacting with the shell rather than with us. A brief topmost flip is
+        // the ordinary way to get in front without SetForegroundWindow's rules applying.
+        if (!IsForeground())
+        {
+            Topmost = true;
+            Topmost = false;
+        }
     }
+
+    private bool IsForeground()
+    {
+        var mine = new WindowInteropHelper(this).Handle;
+        return mine != nint.Zero && mine == GetForegroundWindow();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
 
     private void PlaceNearTray()
     {
