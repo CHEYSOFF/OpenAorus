@@ -1,0 +1,118 @@
+# Known-good reading, AORUS 17G KD, captured 2026-09-06 22:40 while the Gigabyte WMI
+# schema was still registered. Recorded here because the live diagnostics file was later
+# overwritten by a run made after Control Center was uninstalled, in which all 87 of these
+# calls answer "Not found".
+#
+# This is the reference Gate A compares a fresh registration against. If our own MOF is
+# correct, a machine in a comparable state answers these methods with values of the same
+# shape. The anchors that matter most are marked ANCHOR: they are the ones that would
+# expose a wrong WmiMethodId rather than merely a different moment in time.
+
+OpenAorus 0.2.0 diagnostics - 2026-09-06 22:40:01
+Model: AORUS 17G KD (Tested, DutyMax=229, Fans=2)
+OS: Microsoft Windows NT 10.0.26200.0
+
+GB_WMIACPI_Get:
+  GetCPUFanDuty: Data=115
+  GetGPUFanDuty: Data=115
+  GetBatteryCount: ERROR GB_WMIACPI_Get.GetBatteryCount: Invalid object
+  GetMaxCharge: Data=0
+  GetPEGorSG: Data=115
+  GetNvPowerConfig: ERROR GB_WMIACPI_Get.GetNvPowerConfig: Invalid object
+  GetThermalData: ERROR GB_WMIACPI_Get.GetThermalData: Invalid object
+  GetNvThermalTarget: Data=0
+  CheckHeavyLoading: Status=0
+  GetDeepFan: ERROR GB_WMIACPI_Get.GetDeepFan: Invalid object
+  GetBatteryHealth: Data=1
+  GetFanHealth: ERROR GB_WMIACPI_Get.GetFanHealth: Invalid object
+  GetPowerOnTime: Day=23 Hour=11 Minute=11 Month=9 Year=37
+  GetChargePolicy: Data=0
+  GetChargeStop: Data=97                          # ANCHOR - Gate B round-trips this
+  GetStepFanStatus: Data=1
+  GetVRStatus: ERROR GB_WMIACPI_Get.GetVRStatus: Invalid object
+  GetFixedFanStatus: Data=1
+  GetFixedFanSpeed: Data=115
+  IsDeviceExist: Data=0
+  getBattCyc1: Data=81
+  getBattCyc: Data=1
+  GetFanPWMStatus: Data=115
+  GetFanAdjustStatus: Data=115
+  GetAutoFanStatus: Data=0
+  GetSleepUSBCharge: Data=0
+  GetHibernationUSBCharge: Data=0
+  CheckUCFSupport: ERROR GB_WMIACPI_Get.CheckUCFSupport: Invalid object
+  GetFanSpeed: Data=0
+  GetCamera2: ERROR GB_WMIACPI_Get.GetCamera2: Invalid object
+  GetTouchScreenSupport: ERROR GB_WMIACPI_Get.GetTouchScreenSupport: Invalid object
+  GetAIBoostStatus: Data=0
+  GetFirstDate: ERROR GB_WMIACPI_Get.GetFirstDate: Invalid object
+  GetEcValueBoostStatus: ERROR GB_WMIACPI_Get.GetEcValueBoostStatus: Invalid object
+  GetWhisperMode: Data=0
+  GetBrightness: ERROR GB_WMIACPI_Get.GetBrightness: Invalid object
+  GetBluetooth: Data=1
+  GetWiFi: Data=1
+  GetW35G: Data=0
+  GetBirightnessOff: Data=0
+  GetCamera: Data=1
+  GetTouchPad: Data=1
+  GetWinkeyBlocking: ERROR GB_WMIACPI_Get.GetWinkeyBlocking: Invalid object
+  GetTurboMode: ERROR GB_WMIACPI_Get.GetTurboMode: Invalid object
+  GetSmartCharge: Data=0
+  CheckSmartCharge: Data=1
+  CheckSmartTurbo: ERROR GB_WMIACPI_Get.CheckSmartTurbo: Invalid object
+  GetUSB30: ERROR GB_WMIACPI_Get.GetUSB30: Invalid object
+  CheckUSB30: ERROR GB_WMIACPI_Get.CheckUSB30: Invalid object
+  GetDockingStatus: ERROR GB_WMIACPI_Get.GetDockingStatus: Invalid object
+  GetTouchScreen: ERROR GB_WMIACPI_Get.GetTouchScreen: Invalid object
+  GetSmartTurbo: ERROR GB_WMIACPI_Get.GetSmartTurbo: Invalid object
+  GetLid1Status: Data=1
+  GetKeyboardMatrix: ERROR GB_WMIACPI_Get.GetKeyboardMatrix: Invalid object
+  GetSmartTurboStatus: ERROR GB_WMIACPI_Get.GetSmartTurboStatus: Invalid object
+  GetGSensorStatus: ERROR GB_WMIACPI_Get.GetGSensorStatus: Invalid object
+  GetOnboardLANStatus: ERROR GB_WMIACPI_Get.GetOnboardLANStatus: Invalid object
+  CheckDocking: ERROR GB_WMIACPI_Get.CheckDocking: Invalid object
+  GetKeyBoardBackLight: Data=0
+  QueryLightSensor: Data=0
+  QueryThermalSensor: ERROR GB_WMIACPI_Get.QueryThermalSensor: Invalid object
+  GetSmartCool: ERROR GB_WMIACPI_Get.GetSmartCool: Invalid object
+  GetLightSensorVersion: Data=0
+  CheckBIOSMode: ERROR GB_WMIACPI_Get.CheckBIOSMode: Invalid object
+  Check3GModule: ERROR GB_WMIACPI_Get.Check3GModule: Invalid object
+  getCpuTemp: Data=90                             # ANCHOR - plausible range, not 0 or 255
+  getGpuTemp1: Data=53                            # ANCHOR - the primary GPU source works
+  getGpuTemp2: Data=0
+  getRpm1: Data=44046                             # ANCHOR - byte-swaps to 3756 rpm
+  getRpm2: Data=33295                             # ANCHOR - byte-swaps to 3970 rpm
+  GetPEG2orSG2: ERROR GB_WMIACPI_Get.GetPEG2orSG2: Invalid object
+  GetDynamicBoostStatus: Data=0
+
+Fan table (GetFanIndexValue 0..14):               # ANCHOR - 15 slots, monotonic, tops at 229
+  [0] temp=0 duty=57
+  [1] temp=50 duty=68
+  [2] temp=53 duty=80
+  [3] temp=56 duty=91
+  [4] temp=59 duty=103
+  [5] temp=62 duty=114
+  [6] temp=65 duty=125
+  [7] temp=68 duty=137
+  [8] temp=71 duty=148
+  [9] temp=74 duty=160
+  [10] temp=77 duty=171
+  [11] temp=80 duty=183
+  [12] temp=83 duty=194
+  [13] temp=86 duty=206
+  [14] temp=89 duty=229
+
+# Notes that matter for Gate A, learned from this and a later dump on the same machine:
+#
+# - The "Invalid object" answers are methods this model does not implement. They are part of
+#   the expected shape, not failures. A registration that made them all succeed would be
+#   more suspicious than one that reproduced them.
+# - Several methods answer with whatever the last call left in the buffer: GetPEGorSG,
+#   GetFanPWMStatus and GetFanAdjustStatus all returned 115 here, and all returned 229 in a
+#   later dump where the duty was 229. They are unimplemented, and their value must never be
+#   trusted or used as an anchor.
+# - A later dump on this machine, taken while a custom curve was applied, read back the
+#   curve OpenAorus had written - 40/57, 50/69, 60/92, 70/126, 80/172, 90/229 - followed by
+#   a (0,0) terminator at slot 6 and stale values in slots 7..14. That confirms both the
+#   duty conversion at 229/100 and that the terminator is written where intended.
