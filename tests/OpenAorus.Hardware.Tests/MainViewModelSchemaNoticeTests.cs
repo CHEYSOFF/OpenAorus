@@ -35,12 +35,13 @@ public class MainViewModelSchemaNoticeTests : IDisposable
     }
 
     private MainViewModel Build(
-        FakeSchemaSystem sys, ModelProfile? profile = null, SchemaRecord? record = null)
+        FakeSchemaSystem sys, ModelProfile? profile = null, SchemaRecord? record = null,
+        FakeGigabyteWmi? wmi = null)
     {
         profile ??= Kd;
         Directory.CreateDirectory(_dir);
 
-        var wmi = new FakeGigabyteWmi();
+        wmi ??= new FakeGigabyteWmi();
         var store = new SettingsStore(Path.Combine(_dir, "settings.json"));
         var settings = new AppSettings();
         if (record is not null) settings.Schema = record;
@@ -137,6 +138,32 @@ public class MainViewModelSchemaNoticeTests : IDisposable
             await vm.OnSensorPollAsync(SensorSnapshot.Empty with { Ok = true, Error = null }, 1000 * i);
 
         Assert.Equal(0, raisedAgain);
+    }
+
+    [Fact]
+    public async Task The_explanation_survives_the_sensor_failures_the_missing_schema_causes()
+    {
+        // The whole point of the notice, and the one second it used to last. Without a schema
+        // there is no GB_WMIACPI_Get either, so every sensor poll fails as well - and the poll
+        // loop's report of that used to take the explanation off the screen a second after
+        // startup, leaving the owner with the method-level noise this release exists to replace.
+        var wmi = new FakeGigabyteWmi();
+        foreach (var m in new[] { "getCpuTemp", "getGpuTemp1", "GetThermalData", "getRpm1", "getRpm2" })
+            wmi.FailOn.Add(m);
+
+        var vm = Build(BareMachine(), wmi: wmi);
+        Assert.Contains("not registered", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+
+        // Exactly what the poller would hand it on such a machine, read through the real reader.
+        var snap = new SensorReader(wmi, Kd).Read();
+        Assert.False(snap.Ok);
+        Assert.Contains("getCpuTemp", snap.Error!, StringComparison.Ordinal);
+
+        for (var i = 0; i < 3; i++) await vm.OnSensorPollAsync(snap, 1000 * i);
+
+        Assert.Equal(BannerKind.Warning, vm.Banner);
+        Assert.Contains("not registered", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("getCpuTemp", vm.BannerText, StringComparison.Ordinal);
     }
 
     [Fact]

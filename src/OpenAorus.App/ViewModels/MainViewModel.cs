@@ -117,9 +117,12 @@ public partial class MainViewModel : ObservableObject
         {
             // Routed through ReportOverrideNotice (not SetBanner) so this reaches the owner on every
             // model, including an unrecognised one whose banner is otherwise permanent - see BannerState.
+            // Ranked so that a sensor poll failing on the same machine does not take it away: what the
+            // owner is being asked to look at here is their settings file, not a reading.
             _bannerState.ReportOverrideNotice(BannerKind.Warning,
                 "Settings could not be read and were reset to defaults; the previous file was kept as settings.json.bad. " +
-                "If 'Take over from Gigabyte Control Center' was on, its record is gone - re-check it in Settings.");
+                "If 'Take over from Gigabyte Control Center' was on, its record is gone - re-check it in Settings.",
+                NoticeRank.OutranksDerivedErrors);
             SyncBanner();
         }
         else if (_s.Store.LastLoadRepaired)
@@ -151,7 +154,8 @@ public partial class MainViewModel : ObservableObject
                           "read check and the charge-limit round trip are run again.");
             parts.Add("Everything else in your settings was kept.");
 
-            _bannerState.ReportOverrideNotice(BannerKind.Warning, string.Join(" ", parts));
+            _bannerState.ReportOverrideNotice(
+                BannerKind.Warning, string.Join(" ", parts), NoticeRank.OutranksDerivedErrors);
             SyncBanner();
         }
         else if (!_s.Schema.WritesUnlocked)
@@ -169,7 +173,14 @@ public partial class MainViewModel : ObservableObject
             //
             // An "else", because those two notices already say that writes are locked and why, and
             // an override notice raised twice in one constructor would only be the second one.
-            _bannerState.ReportOverrideNotice(BannerKind.Warning, _s.Schema.Report.Explanation);
+            //
+            // OutranksDerivedErrors is what makes it last longer than a second. With no schema
+            // registered there is no GB_WMIACPI_Get either, so the first poll a second from now
+            // fails on every sensor - and reporting that over the top of this would put the owner
+            // back in front of "getCpuTemp: ...Not found", which is the symptom-level noise this
+            // notice exists to replace. The reading is kept underneath, not thrown away.
+            _bannerState.ReportOverrideNotice(
+                BannerKind.Warning, _s.Schema.Report.Explanation, NoticeRank.OutranksDerivedErrors);
             SyncBanner();
         }
     }

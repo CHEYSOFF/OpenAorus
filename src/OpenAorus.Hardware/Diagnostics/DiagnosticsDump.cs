@@ -1,7 +1,9 @@
 using System.Text;
+using OpenAorus.Hardware.Config;
 using OpenAorus.Hardware.Hotkeys;
 using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Wmi;
+using OpenAorus.Hardware.Wmi.Schema;
 
 namespace OpenAorus.Hardware.Diagnostics;
 
@@ -43,14 +45,29 @@ public static class DiagnosticsDump
     /// negative about the hardware. The checklist leads with the in-window button for that reason;
     /// this section is only evidence when it came from there, after keys were actually
     /// pressed.</param>
+    /// <param name="schema">The last reading of what is registered in <c>root\WMI</c>, if the
+    /// caller has one. Rendered beside the hotkey trace and above the readings, because it decides
+    /// whether any of them could have worked: on a machine with no schema every line below is
+    /// <c>Not found</c>, and without this section nothing in the file says why.</param>
+    /// <param name="gates">The gate record from the settings file, if the caller has one. The
+    /// design and the checklist both treat a dump as the artefact of a gate run; the verdict
+    /// otherwise lives only in a Settings card and in <c>settings.json</c>, neither of which
+    /// reaches a bug report.</param>
     /// <returns>The dump text.</returns>
-    public static string Render(IGigabyteWmi wmi, ModelProfile profile, string appVersion, HotkeyTrace? hotkeys = null)
+    public static string Render(
+        IGigabyteWmi wmi, ModelProfile profile, string appVersion, HotkeyTrace? hotkeys = null,
+        SchemaReport? schema = null, SchemaRecord? gates = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"OpenAorus {appVersion} diagnostics - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"Model: {profile.Name} ({profile.Status}, DutyMax={profile.DutyMax}, Fans={profile.FanCount})");
         sb.AppendLine($"OS: {Environment.OSVersion}");
         sb.AppendLine();
+        if (schema is not null)
+        {
+            AppendSchema(sb, schema, gates);
+            sb.AppendLine();
+        }
         if (hotkeys is not null)
         {
             sb.Append(hotkeys.Render());
@@ -75,5 +92,48 @@ public static class DiagnosticsDump
                 : $"  [{i}] ERROR {r.Error}");
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Renders what is registered on this machine and what the gates made of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Four lines, and every absence is printed as an answer rather than left blank. A machine
+    /// with no schema is the one most likely to be exporting a dump, and "nothing is registered,
+    /// nothing to fingerprint, no run recorded" is a complete reading of it - a blank there would
+    /// read as a renderer that gave up.
+    /// </para>
+    /// <para>
+    /// A machine that could not be READ is not the same as one with nothing registered, and the
+    /// two are kept apart here exactly as <see cref="SchemaReport.Status"/> keeps them apart: one
+    /// is a machine to register on, the other is a WMI service to fix first.
+    /// </para>
+    /// <para>
+    /// The record's own fingerprint is printed beside the live one because that comparison is the
+    /// whole of why a pass expires: a recorded pass over a mapping the machine no longer carries
+    /// unlocks nothing, and two fingerprints that differ say so at a glance.
+    /// </para>
+    /// </remarks>
+    private static void AppendSchema(StringBuilder sb, SchemaReport schema, SchemaRecord? gates)
+    {
+        var state = schema.Status is { } status ? status.ToString() : "could not be read";
+        sb.AppendLine($"WMI schema: {state} - writes {(schema.WritesUnlocked ? "unlocked" : "locked")}");
+        if (schema.Status is null && schema.Failure is { } failure)
+            sb.AppendLine($"  Windows reported: {failure}");
+
+        var live = schema.Snapshot is null ? "not read"
+            : schema.Snapshot.LiveFingerprint ?? "none - no registered class declares a method";
+        sb.AppendLine($"  live fingerprint: {live}");
+
+        var pass = gates is { GatesPassed: true, When: { } when, Fingerprint: { } against }
+            ? $"{when:yyyy-MM-dd HH:mm} against {against}"
+            : "none";
+        sb.AppendLine($"  recorded pass: {pass}");
+
+        // Printed even when the pass it describes has been cleared or has expired: what a past run
+        // reported is still the most useful thing an owner asking why writes are locked can send.
+        var summary = gates?.GateSummary;
+        sb.AppendLine($"  gate summary: {(string.IsNullOrWhiteSpace(summary) ? "none recorded" : summary)}");
     }
 }

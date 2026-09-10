@@ -66,12 +66,28 @@ public static class MofWriter
     /// The base class <c>GB_WMIACPI_Event</c> derives from.
     /// </summary>
     /// <remarks>
-    /// INFERRED, NOT RECOVERED. The dump records no class's superclass. It does list
-    /// <c>SECURITY_DESCRIPTOR</c> and <c>TIME_CREATED</c> among the event class's properties, and
-    /// those two are not Gigabyte's - they are the fingerprint of WMI's own event base - so the
-    /// dump is showing inherited members and the original MOF said <c>: WMIEvent</c>. If a machine
-    /// ever rejects that, <c>__ExtrinsicEvent</c> is the next thing to try, and this constant is
-    /// the whole change.
+    /// <para>
+    /// MEASURED, NOT INFERRED. It was a reading of the dump once - the dump records no class's
+    /// superclass, and <c>SECURITY_DESCRIPTOR</c> and <c>TIME_CREATED</c> sitting among the event
+    /// class's properties with empty qualifier lists was the argument that the original MOF said
+    /// <c>: WMIEvent</c> and that those two are inherited. It has since been checked directly:
+    /// <c>Get-CimClass -Namespace root\WMI -ClassName WMIEvent</c> on the owner's machine returns a
+    /// real class, its parent is <c>__ExtrinsicEvent</c>, and its properties are exactly those two.
+    /// The question is settled; it does not need re-opening.
+    /// </para>
+    /// <para>
+    /// <c>mofcomp -check</c> IS NOT THAT EVIDENCE AND CANNOT BE. It parses the file, opens no
+    /// repository and resolves no superclass: a MOF naming a base class that exists nowhere still
+    /// parses and still exits 0, which was demonstrated by substituting a nonsense name for
+    /// <c>WMIEvent</c> and watching the check report success. A clean check says the file is
+    /// syntactically a MOF and says nothing whatsoever about this line. VERIFY.md 8.2 records both
+    /// halves.
+    /// </para>
+    /// <para>
+    /// What is still untested is the step after: that emitting this as a base and declaring only
+    /// the members that carry qualifiers produces a class <c>mofcomp</c> accepts into the
+    /// repository. If some other machine ever rejects it, this constant is still the whole change.
+    /// </para>
     /// </remarks>
     public const string EventBaseClass = "WMIEvent";
 

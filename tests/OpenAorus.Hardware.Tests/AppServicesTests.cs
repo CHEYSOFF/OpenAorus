@@ -6,6 +6,7 @@ using OpenAorus.Hardware.Fans;
 using OpenAorus.Hardware.Lighting;
 using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Sensors;
+using OpenAorus.Hardware.Wmi.Schema;
 
 namespace OpenAorus.Hardware.Tests;
 
@@ -37,6 +38,48 @@ public class AppServicesTests
             Version = "0.0.0",
             ExePath = "OpenAorus.Tests.exe",
         };
+    }
+
+    [Fact]
+    public void The_exported_dump_says_what_is_registered_and_what_the_gates_made_of_it()
+    {
+        // The machine most likely to press Export diagnostics, end to end: nothing registered, so
+        // all 72 readings below fail, and until this the file carried no reason for any of it.
+        var dir = Path.Combine(Path.GetTempPath(), "OpenAorusTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var profile = ModelProfile.Detect("AORUS 17G KD");
+            var wmi = new FakeGigabyteWmi();
+            var record = new SchemaRecord { GateSummary = "Gate A: 3 of 72 readings differed" };
+            var services = new AppServices
+            {
+                Profile = profile,
+                Wmi = wmi,
+                Fans = new FanController(wmi, profile, delay: _ => Task.CompletedTask),
+                Sensors = new SensorReader(wmi, profile),
+                Battery = new BatteryController(wmi),
+                Store = new SettingsStore(Path.Combine(dir, "settings.json")),
+                Settings = new AppSettings(),
+                Schema = new SchemaService(new FakeSchemaSystem(), record, SchemaMof.Fingerprint),
+                Gcc = new FakeGccSystem(),
+                Lighting = new LightingController(
+                    new FakeKeyboardHid(), KeyLayout.For(KeyboardLayout.EngUk), delay: _ => Task.CompletedTask),
+                KeyboardPresent = false,
+                Version = "0.0.0",
+                ExePath = "OpenAorus.Tests.exe",
+            };
+
+            var text = System.IO.File.ReadAllText(services.WriteDiagnostics());
+
+            Assert.Contains("WMI schema: Absent - writes locked", text);
+            Assert.Contains("live fingerprint: none", text);
+            Assert.Contains("Gate A: 3 of 72 readings differed", text);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     /// <summary>The 0x02 "set effect" report out of a sequence that also carries a 0x82 status read.</summary>

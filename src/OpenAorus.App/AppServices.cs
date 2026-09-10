@@ -263,7 +263,10 @@ public sealed class AppServices
 
     public string WriteDiagnostics()
     {
-        var text = DiagnosticsDump.Render(Wmi, Profile, Version, HotkeyTrace);
+        // The schema reading and the gate record go in beside the hotkey trace: they are what says
+        // whether the 72 readings below could have worked at all, and a dump exported from a
+        // machine whose writes are locked is otherwise a file with no reason in it.
+        var text = DiagnosticsDump.Render(Wmi, Profile, Version, HotkeyTrace, Schema.Report, Schema.Record);
         var dir = Path.GetDirectoryName(Store.Path)!;
         Directory.CreateDirectory(dir);
         var safe = string.Concat(Profile.Name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Replace(' ', '-');

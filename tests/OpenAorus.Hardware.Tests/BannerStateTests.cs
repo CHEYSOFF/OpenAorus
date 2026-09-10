@@ -150,6 +150,93 @@ public class BannerStateTests
     }
 
     [Fact]
+    public void An_outranking_notice_is_not_displaced_by_a_failing_sensor_read()
+    {
+        // The reads are failing because of what the notice explains, so reporting them over the
+        // top of it replaces a cause with its own symptom.
+        var b = new BannerState(Tested());
+        b.ReportOverrideNotice(BannerKind.Warning, "the interface is not registered",
+            NoticeRank.OutranksDerivedErrors);
+
+        b.ReportSensorResult(ok: false, error: "getCpuTemp: Not found");
+
+        Assert.Equal(BannerKind.Warning, b.Kind);
+        Assert.Equal("the interface is not registered", b.Text);
+    }
+
+    [Fact]
+    public void A_failing_read_under_an_outranking_notice_is_recorded_rather_than_dropped()
+    {
+        // Outranked is not unheard: the error is kept underneath, so whatever supersedes the
+        // notice reveals the state the machine is actually in rather than an empty banner.
+        var b = new BannerState(Tested());
+        b.ReportOverrideNotice(BannerKind.Warning, "the interface is not registered",
+            NoticeRank.OutranksDerivedErrors);
+        b.ReportSensorResult(ok: false, error: "getCpuTemp: Not found");
+
+        b.ReportSuccess();
+
+        Assert.Equal(BannerKind.Error, b.Kind);
+        Assert.Equal("getCpuTemp: Not found", b.Text);
+    }
+
+    [Fact]
+    public void An_outranking_notice_still_gives_way_to_a_read_that_succeeded()
+    {
+        // A machine that is answering again is news the notice was not covering - and it is what
+        // takes the notice down once the owner has fixed the thing it named.
+        var b = new BannerState(Tested());
+        b.ReportOverrideNotice(BannerKind.Warning, "the interface is not registered",
+            NoticeRank.OutranksDerivedErrors);
+
+        b.ReportSensorResult(ok: true, error: null);
+
+        Assert.Equal(BannerKind.None, b.Kind);
+        Assert.Equal("", b.Text);
+    }
+
+    [Fact]
+    public void An_outranking_notice_still_gives_way_to_a_failure_the_owner_caused()
+    {
+        var b = new BannerState(Tested());
+        b.ReportOverrideNotice(BannerKind.Warning, "the interface is not registered",
+            NoticeRank.OutranksDerivedErrors);
+
+        b.ReportFailure("apply failed");
+
+        Assert.Equal(BannerKind.Error, b.Kind);
+        Assert.Equal("apply failed", b.Text);
+    }
+
+    [Fact]
+    public void An_ordinary_notice_still_gives_way_to_a_failing_sensor_read()
+    {
+        // The default, and the rule the rank is an exception to: a notice about something the
+        // sensors have no part in has no claim on a banner they are failing under.
+        var b = new BannerState(Tested());
+        b.ReportOverrideNotice(BannerKind.Warning, "settings were reset");
+
+        b.ReportSensorResult(ok: false, error: "sensor read failed");
+
+        Assert.Equal(BannerKind.Error, b.Kind);
+        Assert.Equal("sensor read failed", b.Text);
+    }
+
+    [Fact]
+    public void An_outranking_notice_on_an_unknown_model_is_as_permanent_as_the_rest()
+    {
+        var b = new BannerState(Unknown());
+        b.ReportOverrideNotice(BannerKind.Warning, "the interface is not registered",
+            NoticeRank.OutranksDerivedErrors);
+
+        b.ReportSensorResult(ok: false, error: "getCpuTemp: Not found");
+        b.ReportSensorResult(ok: true, error: null);
+
+        Assert.Equal(BannerKind.Warning, b.Kind);
+        Assert.Equal("the interface is not registered", b.Text);
+    }
+
+    [Fact]
     public void Untested_model_returns_to_its_baseline_warning_once_the_override_notice_is_gone()
     {
         var baseline = new BannerState(Untested());

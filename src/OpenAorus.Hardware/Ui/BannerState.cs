@@ -4,6 +4,37 @@ namespace OpenAorus.Hardware.Ui;
 
 public enum BannerKind { None, Info, Warning, Error }
 
+/// <summary>How much of the banner an override notice is entitled to hold on to.</summary>
+/// <remarks>
+/// <para>
+/// The distinction is between news and consequence. Most of what the banner reports is news the
+/// owner has not heard - a write that failed, a curve that was saved - and an override notice
+/// stands aside for the next one of those, whatever it is.
+/// </para>
+/// <para>
+/// Some notices name a cause the app can expect to see reported back at it as an error. A machine
+/// whose Gigabyte WMI schema is not registered has no <c>GB_WMIACPI_Get</c> either, so every
+/// sensor poll fails too; a settings file that had to be repaired is a state the owner is being
+/// asked to look at, not a reading. Letting a derived error take the banner replaces a cause the
+/// owner can act on with a symptom they cannot, once per poll, a second after startup.
+/// </para>
+/// </remarks>
+public enum NoticeRank
+{
+    /// <summary>The next report of any kind reveals what is underneath. The default.</summary>
+    Ordinary,
+
+    /// <summary>
+    /// A failing sensor read does not displace this notice - it is recorded underneath and
+    /// surfaces if anything else supersedes it.
+    /// </summary>
+    /// <remarks>Nothing else changes: a failure or notice the owner's own action produced still
+    /// supersedes it, and so does a sensor read that succeeded, because a machine that is
+    /// answering again is news this notice was not covering - and on a machine the owner has just
+    /// fixed, it is what takes the notice down.</remarks>
+    OutranksDerivedErrors,
+}
+
 /// <summary>
 /// Owns the single owner-facing banner shown above the fan/sensor UI.
 ///
@@ -29,6 +60,12 @@ public enum BannerKind { None, Info, Warning, Error }
 /// underlying state is - e.g. an untested model's baseline warning, not an empty banner. On an unknown
 /// model those methods still no-op entirely, so an override notice raised there is as permanent as the
 /// baseline error it sits on top of.
+///
+/// One exception, and it belongs to the notice rather than to any feature: a notice raised as
+/// <see cref="NoticeRank.OutranksDerivedErrors"/> is not cleared by a sensor read that FAILED, because
+/// on the machines those notices are about the failing read is a consequence of what the notice already
+/// explains. The read is still recorded in the sensor state underneath, so anything that does supersede
+/// the notice reveals it. Everything else is unchanged, the successful read included.
 /// </summary>
 public sealed class BannerState
 {
@@ -45,6 +82,7 @@ public sealed class BannerState
     private bool _overrideActive;
     private BannerKind _overrideKind;
     private string _overrideText = "";
+    private NoticeRank _overrideRank;
 
     public BannerKind Kind => _overrideActive ? _overrideKind : _normalKind;
     public string Text => _overrideActive ? _overrideText : _normalText;
@@ -70,18 +108,29 @@ public sealed class BannerState
     /// the banner is currently tracking without disturbing it - see the class remarks for how and when it
     /// is revealed again.
     /// </summary>
-    public void ReportOverrideNotice(BannerKind kind, string text)
+    /// <param name="kind">How to draw it.</param>
+    /// <param name="text">What it says.</param>
+    /// <param name="rank">Whether a failing sensor read is independent news or a consequence of what
+    /// this notice explains. See <see cref="NoticeRank"/>; the default is the older behaviour.</param>
+    public void ReportOverrideNotice(BannerKind kind, string text, NoticeRank rank = NoticeRank.Ordinary)
     {
         _overrideActive = true;
         _overrideKind = kind;
         _overrideText = text;
+        _overrideRank = rank;
     }
 
     /// <summary>Report the outcome of a sensor poll. Only clears a banner this same method previously raised.</summary>
+    /// <remarks>A failed poll leaves an <see cref="NoticeRank.OutranksDerivedErrors"/> notice showing:
+    /// it is a consequence of what that notice already explains, and the owner needs the cause. The
+    /// reading is still recorded underneath either way, so nothing is lost by not showing it yet.</remarks>
     public void ReportSensorResult(bool ok, string? error)
     {
         if (_status == ProfileStatus.Unknown) return;
-        _overrideActive = false;
+
+        // The one report that does not automatically take an override notice down.
+        var outranked = !ok && _overrideActive && _overrideRank == NoticeRank.OutranksDerivedErrors;
+        if (!outranked) ClearOverride();
 
         if (!ok)
         {
@@ -112,7 +161,7 @@ public sealed class BannerState
     public void ReportNotice(BannerKind kind, string text)
     {
         if (_status == ProfileStatus.Unknown) return;
-        _overrideActive = false;
+        ClearOverride();
 
         _normalKind = kind;
         _normalText = text;
@@ -126,11 +175,17 @@ public sealed class BannerState
     public void ReportSuccess()
     {
         if (_status == ProfileStatus.Unknown) return;
-        _overrideActive = false;
+        ClearOverride();
         if (_source != Source.Explicit) return;
 
         _source = Source.Baseline;
         RevertToBaseline();
+    }
+
+    private void ClearOverride()
+    {
+        _overrideActive = false;
+        _overrideRank = NoticeRank.Ordinary;
     }
 
     private void RevertToBaseline()

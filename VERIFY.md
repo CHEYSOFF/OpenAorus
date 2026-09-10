@@ -29,7 +29,7 @@ does not have that problem.
 dotnet run --project src/OpenAorus.App -- --dump
 ```
 
-- [ ] The output starts with `OpenAorus 0.3.0 diagnostics` and a model line reading
+- [ ] The output starts with `OpenAorus 0.4.0 diagnostics` and a model line reading
       `Model: AORUS 17G KD (Tested, DutyMax=229, Fans=2)`
 - [ ] `getCpuTemp` reports a plausible temperature in °C
 - [ ] `GetCPUFanDuty` and `GetGPUFanDuty` are between 0 and 229
@@ -845,10 +845,13 @@ still one constant if some other machine ever rejects it.
       this feature has not earned the right to make
 - [ ] After both gates pass, the fan strip, the curve editor and the battery card come alive
       **without restarting the app**
-- [ ] The verdict is not in the diagnostics dump - that file carries the method readings and the
-      fan table and nothing about the schema. The verdict is the message on the Settings card,
-      and it is written into `%LocalAppData%\OpenAorus\settings.json` under `Schema` as
-      `GateSummary`, beside `GatesPassed`, `Fingerprint` and `When`. Copy it out of there
+- [ ] The verdict is in the diagnostics dump, at the top beside the hotkey trace: a **WMI
+      schema** block naming the state the app classified this machine as, whether writes are
+      locked or unlocked, the live fingerprint, and the recorded pass and its `GateSummary`.
+      Export one and read that block - a dump from a machine whose writes are locked has to be
+      able to say why, because it is the file that reaches a bug report. The same verdict is on
+      the Settings card and in `%LocalAppData%\OpenAorus\settings.json` under `Schema`, as
+      `GateSummary` beside `GatesPassed`, `Fingerprint` and `When`
 
 ### 8.5 Fan control working afterwards, which is the point of all of it
 

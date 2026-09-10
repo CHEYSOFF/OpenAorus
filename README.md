@@ -4,9 +4,9 @@ Open-source, single-executable replacement for the fan, sensor, battery and
 keyboard-lighting features of Gigabyte Control Center on Gigabyte AORUS / AERO
 laptops. Think [G-Helper](https://github.com/seerge/g-helper), but for Gigabyte.
 
-**Status: pre-alpha, v0.3. Nothing here is verified on real hardware: not the fan
+**Status: pre-alpha, v0.4. Nothing here is verified on real hardware: not the fan
 control from v0.1, not the lighting added in v0.2, not the Fn hotkeys added in
-v0.3, and not the WMI schema OpenAorus now registers for itself. See
+v0.3, and not the WMI schema OpenAorus registers for itself in v0.4. See
 [Verification status](#verification-status) below.**
 
 ## Why
