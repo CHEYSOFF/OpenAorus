@@ -344,6 +344,16 @@ public static class SchemaRegistrar
         }
     }
 
+    /// <summary>The state of the machine right now, for an ownership decision only.</summary>
+    /// <remarks>
+    /// <c>gatesRecorded: false</c> because this class has no gate record and needs none. The two
+    /// decisions it makes are <see cref="SchemaState.CanInstall"/> and
+    /// <see cref="SchemaState.CanRemove"/>, and both answer <see cref="SchemaStatus.Foreign"/> and
+    /// <see cref="SchemaStatus.ForeignGated"/> identically - as they answer
+    /// <see cref="SchemaStatus.Ours"/> and <see cref="SchemaStatus.OursGated"/> identically. A pass
+    /// buys no permission here, so threading one through would only give this code a second thing
+    /// to be wrong about.
+    /// </remarks>
     private static SchemaStatus Classify(ISchemaSystem sys, string expectedFingerprint) =>
         SchemaState.Classify(Look(sys, SchemaClasses.MethodBearing), expectedFingerprint, gatesRecorded: false);
 

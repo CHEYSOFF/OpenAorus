@@ -1,10 +1,12 @@
+using OpenAorus.Hardware.Config;
 using OpenAorus.Hardware.Wmi.Schema;
 
 namespace OpenAorus.Hardware.Tests;
 
 /// <summary>
-/// Five states, and the two things that must never happen in any of them: registering over a
-/// working schema, and removing one that is not ours.
+/// Seven states, and the two things that must never happen in any of them: registering over a
+/// working schema, and removing one that is not ours. Neither of which is the same question as
+/// whether a write may go through - which is what the gates, and only the gates, answer.
 /// </summary>
 public class SchemaStateTests
 {
@@ -49,10 +51,12 @@ public class SchemaStateTests
     {
         // The marker says we were here once. The fingerprint says what is there now is not what
         // we put there, and the fingerprint is the one that decides.
-        var s = SchemaState.Classify(Snapshot(classes: true, marker: true, fingerprint: Different), Expected, gatesRecorded: true);
+        var s = SchemaState.Classify(Snapshot(classes: true, marker: true, fingerprint: Different), Expected, gatesRecorded: false);
 
         Assert.Equal(SchemaStatus.Foreign, s);
         Assert.False(SchemaState.WritesUnlocked(s));
+        Assert.False(SchemaState.CanInstall(s));
+        Assert.False(SchemaState.CanRemove(s));
     }
 
     [Fact]
@@ -81,10 +85,58 @@ public class SchemaStateTests
     [Fact]
     public void A_recorded_pass_stops_counting_the_moment_the_schema_underneath_changes()
     {
-        // The whole reason the record is safe to keep rather than re-earn every launch.
-        var s = SchemaState.Classify(Snapshot(classes: true, marker: true, fingerprint: Different), Expected, gatesRecorded: true);
+        // The whole reason the record is safe to keep rather than re-earn every launch. Asked the
+        // way the app asks it - the record against the fingerprint the classes bind now - rather
+        // than by handing Classify a "yes" the record would never have given, which is what this
+        // used to do and what let it pass while proving nothing.
+        var record = new SchemaRecord
+        {
+            Registered = true, GatesPassed = true, Fingerprint = Expected,
+            When = DateTime.Now.AddMinutes(-1),
+        };
+        var drifted = Snapshot(classes: true, marker: true, fingerprint: Different);
+
+        var s = SchemaState.Classify(drifted, Expected, record.ProvenFor(drifted.LiveFingerprint));
 
         Assert.False(SchemaState.WritesUnlocked(s));
+        Assert.Equal(SchemaStatus.Foreign, s);
+    }
+
+    [Fact]
+    public void A_pass_that_still_matches_the_schema_underneath_survives_the_registration_not_being_ours()
+    {
+        // The same record and the same question on a Control Center machine. Nothing about it is
+        // ours, and everything the gates checked is still exactly where they checked it.
+        var record = new SchemaRecord
+        {
+            GatesPassed = true, Fingerprint = Different, When = DateTime.Now.AddMinutes(-1),
+        };
+        var theirs = Snapshot(classes: true, marker: false, fingerprint: Different);
+
+        var s = SchemaState.Classify(theirs, Expected, record.ProvenFor(theirs.LiveFingerprint));
+
+        Assert.Equal(SchemaStatus.ForeignGated, s);
+        Assert.True(SchemaState.WritesUnlocked(s));
+        Assert.False(SchemaState.CanInstall(s));
+        Assert.False(SchemaState.CanRemove(s));
+    }
+
+    [Fact]
+    public void Control_center_that_has_passed_both_gates_unlocks_writes_and_is_still_left_alone()
+    {
+        // The machine this app is normally installed onto, and the one the design error made
+        // read-only. Gate A reads the firmware and checks the answers against the known-good
+        // reading, Gate B resolves the Set class, and neither asks whose registration it is.
+        // Refusing writes here was worse than the behaviour it replaced, which wrote to
+        // Gigabyte's schema with no verification at all - and there was no way back, because
+        // CanInstall is rightly false too.
+        var s = SchemaState.Classify(
+            Snapshot(classes: true, marker: false, fingerprint: Expected), Expected, gatesRecorded: true);
+
+        Assert.Equal(SchemaStatus.ForeignGated, s);
+        Assert.True(SchemaState.WritesUnlocked(s));
+        Assert.False(SchemaState.CanInstall(s));
+        Assert.False(SchemaState.CanRemove(s));
     }
 
     [Theory]
@@ -196,11 +248,25 @@ public class SchemaStateTests
     }
 
     [Fact]
-    public void Writes_are_locked_in_every_state_but_one()
+    public void Writes_are_unlocked_only_where_both_gates_have_been_passed()
     {
+        // Two states, and they are the two gated ones. Whose registration it is does not appear
+        // in this answer, and nothing that has not been proved appears in it either.
         var unlocked = Enum.GetValues<SchemaStatus>().Where(SchemaState.WritesUnlocked).ToArray();
 
-        Assert.Equal(new[] { SchemaStatus.OursGated }, unlocked);
+        Assert.Equal(new[] { SchemaStatus.ForeignGated, SchemaStatus.OursGated }, unlocked.Order().ToArray());
+    }
+
+    [Fact]
+    public void Nothing_that_writes_over_somebody_elses_registration_may_touch_it()
+    {
+        // The half of the model the gates must never reach. Passing them buys writes and buys
+        // nothing else, so both foreign states answer install and remove exactly alike.
+        foreach (var s in new[] { SchemaStatus.Foreign, SchemaStatus.ForeignGated })
+        {
+            Assert.False(SchemaState.CanInstall(s));
+            Assert.False(SchemaState.CanRemove(s));
+        }
     }
 
     [Fact]
@@ -227,8 +293,9 @@ public class SchemaStateTests
     [Fact]
     public void No_two_states_explain_themselves_the_same_way()
     {
-        // Five states the owner is told apart by, so five texts. Two that read alike would make
-        // "someone else registered this" and "we registered this" the same screen.
+        // Seven states the owner is told apart by, so seven texts. Two that read alike would
+        // make "someone else registered this" and "we registered this" the same screen - or,
+        // worse, make a machine that writes look like one that does not.
         var texts = Enum.GetValues<SchemaStatus>().Select(SchemaState.Explain).ToArray();
 
         Assert.Equal(texts.Length, texts.Distinct(StringComparer.Ordinal).Count());
@@ -267,10 +334,14 @@ public class SchemaStateTests
     public void The_fingerprint_is_compared_exactly()
     {
         // Lowercase hex on both sides, and a comparison that ignored case would let a settings
-        // file written by some other tool match a schema it had never seen.
+        // file written by some other tool match a schema it had never seen. It reads as somebody
+        // else's - proved, because the gates were run against what is there - and never as ours
+        // to install over or remove.
         var s = SchemaState.Classify(Snapshot(classes: true, marker: true, fingerprint: "AAAA"), Expected, gatesRecorded: true);
 
-        Assert.Equal(SchemaStatus.Foreign, s);
+        Assert.Equal(SchemaStatus.ForeignGated, s);
+        Assert.False(SchemaState.CanInstall(s));
+        Assert.False(SchemaState.CanRemove(s));
     }
 
     [Fact]
@@ -284,6 +355,35 @@ public class SchemaStateTests
         var one = new SchemaSnapshot(false, false, false, true, MarkerPresent: false, MarkerFingerprint: null, LiveFingerprint: null);
         Assert.False(one.AllClassesPresent);
         Assert.True(one.AnyClassPresent);
+    }
+
+    [Fact]
+    public void A_state_nobody_has_answered_for_is_rejected_at_all_four_sites()
+    {
+        // The reason adding ForeignGated could not quietly go wrong. A default arm at any of these
+        // would have given a new state the locked, unregisterable, unremovable "no" at three sites
+        // and a blank explanation at the fourth - which is exactly the shape of the regression
+        // ForeignGated exists to undo.
+        var undefined = (SchemaStatus)99;
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => SchemaState.CanInstall(undefined));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SchemaState.CanRemove(undefined));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SchemaState.WritesUnlocked(undefined));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SchemaState.Explain(undefined));
+    }
+
+    [Fact]
+    public void Every_defined_state_is_answered_for_at_all_four_sites()
+    {
+        // The other half: nothing in the enum throws. Read together with the test above, the four
+        // switches are exhaustive over exactly the states that exist.
+        foreach (var s in Enum.GetValues<SchemaStatus>())
+        {
+            SchemaState.CanInstall(s);
+            SchemaState.CanRemove(s);
+            SchemaState.WritesUnlocked(s);
+            SchemaState.Explain(s);
+        }
     }
 
     [Fact]

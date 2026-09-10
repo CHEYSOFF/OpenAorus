@@ -30,7 +30,7 @@ public sealed class FanController
     /// <param name="wmi">The only door to the embedded controller.</param>
     /// <param name="profile">The detected model.</param>
     /// <param name="delay">How the pause between two writes is taken; null for a real one.</param>
-    /// <param name="writesUnlocked">Whether the WMI schema has been registered and proved, read at
+    /// <param name="writesUnlocked">Whether the WMI schema on this machine has been proved, read at
     /// every apply rather than captured. Null leaves the gate open, so every construction site that
     /// predates the schema feature is unchanged.</param>
     /// <remarks>

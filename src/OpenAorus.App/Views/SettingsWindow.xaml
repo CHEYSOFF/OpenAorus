@@ -116,9 +116,11 @@
                     <!-- Each button is shown only where the state machine permits that action:
                          never Install over a registration somebody else made, never Remove of
                          classes carrying Gigabyte's names, and never a hardware check against a
-                         registration that is not ours. Registering and proving are two separate
-                         things, so what is offered after a successful install is "Check it works"
-                         rather than another Install. -->
+                         machine with no working registration on it to check. Registering and
+                         proving are two separate things, so what is offered after a successful
+                         install is "Check it works" rather than another Install - and on a
+                         Control Center machine, where the other two are refused and always will
+                         be, "Check it works" is the only button and the only one needed. -->
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <Button Content="Register the interface" Margin="0,0,8,0"
                                 Command="{Binding InstallCommand}">

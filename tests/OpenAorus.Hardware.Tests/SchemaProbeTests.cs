@@ -101,7 +101,17 @@ public class SchemaProbeTests
         var source = FakeWmiClassSource.Registered(Schema, marker: true)
             .Declares(WmiSchemaParser.GetClass, get);
 
-        Assert.Equal(SchemaStatus.Foreign, SchemaProbe.Read(source, Expected, gatesRecorded: true).Status);
+        // Whether the gates have been passed against it is a different question with a different
+        // answer, and neither answer makes this registration ours: both come back refusing
+        // install and refusing remove.
+        Assert.Equal(SchemaStatus.Foreign, SchemaProbe.Read(source, Expected, gatesRecorded: false).Status);
+        Assert.Equal(SchemaStatus.ForeignGated, SchemaProbe.Read(source, Expected, gatesRecorded: true).Status);
+        foreach (var recorded in new[] { false, true })
+        {
+            var report = SchemaProbe.Read(source, Expected, recorded);
+            Assert.False(report.CanInstall);
+            Assert.False(report.CanRemove);
+        }
     }
 
     [Fact]
@@ -118,7 +128,11 @@ public class SchemaProbeTests
         var source = FakeWmiClassSource.Registered(Schema, marker: true)
             .Declares(WmiSchemaParser.SetClass, set);
 
-        Assert.Equal(SchemaStatus.Foreign, SchemaProbe.Read(source, Expected, gatesRecorded: true).Status);
+        var report = SchemaProbe.Read(source, Expected, gatesRecorded: false);
+
+        Assert.Equal(SchemaStatus.Foreign, report.Status);
+        Assert.False(report.CanInstall);
+        Assert.False(report.CanRemove);
     }
 
     [Fact]
@@ -128,13 +142,15 @@ public class SchemaProbeTests
         // not one we may register over; the mapping is not there, so it is not one we may write
         // through either. The two must fingerprint differently or the empty class would vanish
         // from the comparison and a machine with no methods on it would read as fully ours.
+        // No pass is recorded here, and none could be: Gate A reads every method off these
+        // classes, and a class declaring none of them fails it.
         var empty = SchemaProbe.Read(
             FakeWmiClassSource.Registered(Schema, marker: true).Declares(WmiSchemaParser.GetClass),
-            Expected, gatesRecorded: true);
+            Expected, gatesRecorded: false);
 
         var gone = SchemaProbe.Read(
             FakeWmiClassSource.Registered(Schema, marker: true).Lacks(WmiSchemaParser.GetClass),
-            Expected, gatesRecorded: true);
+            Expected, gatesRecorded: false);
 
         Assert.True(empty.Snapshot!.GetPresent);
         Assert.False(gone.Snapshot!.GetPresent);
@@ -175,7 +191,7 @@ public class SchemaProbeTests
     public void Emptied_classes_whose_marker_records_nothing_offer_no_button_at_all()
     {
         // The marker class being there is not the evidence. What it recorded is.
-        var report = SchemaProbe.Read(RebuiltOverOurRegistration(), Expected, gatesRecorded: true);
+        var report = SchemaProbe.Read(RebuiltOverOurRegistration(), Expected, gatesRecorded: false);
 
         Assert.Equal(SchemaStatus.Foreign, report.Status);
         Assert.False(report.CanRemove);
@@ -188,7 +204,7 @@ public class SchemaProbeTests
         var source = RebuiltOverOurRegistration().Records(Expected);
         source.MarkerFailure = new InvalidOperationException("the repository is being rebuilt");
 
-        var report = SchemaProbe.Read(source, Expected, gatesRecorded: true);
+        var report = SchemaProbe.Read(source, Expected, gatesRecorded: false);
 
         // Not an unreadable machine - the five class readings all answered. Just a marker that
         // said nothing, which matches no fingerprint and so can only ever refuse.
@@ -213,7 +229,7 @@ public class SchemaProbeTests
             .Declares(WmiSchemaParser.GetClass, get)
             .Records(Expected);
 
-        var report = SchemaProbe.Read(source, Expected, gatesRecorded: true);
+        var report = SchemaProbe.Read(source, Expected, gatesRecorded: false);
 
         Assert.Equal(SchemaStatus.Foreign, report.Status);
         Assert.False(report.CanRemove);

@@ -2,11 +2,19 @@ namespace OpenAorus.Hardware.Wmi.Schema;
 
 /// <summary>What is registered on this machine, and whose it is.</summary>
 /// <remarks>
-/// Six values, and every one of them has exactly one right answer to the three questions the app
+/// <para>
+/// Seven values, and every one of them has exactly one right answer to the three questions the app
 /// asks: may it install, may it remove, may it write. There is deliberately no value for "we could
 /// not tell" - that is not a state of the machine, it is the absence of a reading, and it is
 /// carried by <see cref="SchemaReport.Status"/> being null instead. Folding the two together is
 /// how a repository that would not answer ends up being registered over.
+/// </para>
+/// <para>
+/// TWO OF THE SEVEN ARE THE SAME REGISTRATION WITH THE GATES PASSED AGAINST IT.
+/// <see cref="Ours"/> pairs with <see cref="OursGated"/> and <see cref="Foreign"/> with
+/// <see cref="ForeignGated"/>, because ownership and proof are two different questions: ownership
+/// governs install and removal, the gates govern writes, and neither answer decides the other.
+/// </para>
 /// </remarks>
 public enum SchemaStatus
 {
@@ -15,9 +23,21 @@ public enum SchemaStatus
 
     /// <summary>
     /// All four classes and no marker, or all four with a marker over a mapping we did not
-    /// install. Control Center, or a hand-run <c>mofcomp</c>.
+    /// install. Control Center, or a hand-run <c>mofcomp</c>. Registered, not proven.
     /// </summary>
     Foreign,
+
+    /// <summary><see cref="Foreign"/>, and both hardware gates passed against this same mapping.</summary>
+    /// <remarks>
+    /// The state of a laptop with Control Center installed and working, once the owner has run the
+    /// checks. It writes and it is never registered over or removed - which is not a contradiction,
+    /// because the two are answers to different questions. Gate A reads the firmware and compares
+    /// every answer against the known-good reading; Gate B proves the <c>Set</c> class resolves.
+    /// Neither asks whose schema it is, and a schema that passes both is proven to work whoever
+    /// installed it. Refusing writes here was strictly worse than the behaviour this feature
+    /// replaced, which wrote to Gigabyte's schema with no verification at all.
+    /// </remarks>
+    ForeignGated,
 
     /// <summary>
     /// Some classes but not all, or a marker with classes missing. A half-finished removal, or a
@@ -124,42 +144,52 @@ public static class SchemaClasses
 /// </summary>
 /// <remarks>
 /// <para>
-/// TWO RULES, NEITHER NEGOTIABLE.
+/// TWO QUESTIONS, AND THEY ARE NOT THE SAME QUESTION. Ownership governs install and removal; the
+/// gates govern writes. Conflating them is what made a working Control Center machine read-only.
 /// </para>
 /// <para>
-/// <em>Never register over a working schema.</em> Two schemas over one GUID is a state nobody has
-/// tested, and the state afterwards is one where neither the owner nor the app can say which one
-/// won. So <see cref="CanInstall"/> is false for <see cref="SchemaStatus.Foreign"/>.
+/// <em>Ownership.</em> Never register over a working schema: two schemas over one GUID is a state
+/// nobody has tested, and the state afterwards is one where neither the owner nor the app can say
+/// which one won. And never remove someone else's: our remove MOF <c>#pragma deleteclass</c>es by
+/// name, and the names are Gigabyte's, so pressing Remove on a Control Center machine would take
+/// Control Center's own registration away and break software we did not install. So
+/// <see cref="CanInstall"/> and <see cref="CanRemove"/> are both false for
+/// <see cref="SchemaStatus.Foreign"/> and for <see cref="SchemaStatus.ForeignGated"/> - the gates
+/// buy no permission over somebody else's registration, and never will.
 /// </para>
 /// <para>
-/// <em>Never remove someone else's.</em> Our remove MOF <c>#pragma deleteclass</c>es by name, and
-/// the names are Gigabyte's. If Control Center is installed and the owner presses Remove, we would
-/// take Control Center's own registration away and break software we did not install. So
-/// <see cref="CanRemove"/> is false for <see cref="SchemaStatus.Foreign"/> too.
-/// </para>
-/// <para>
-/// <see cref="SchemaStatus.OursEmptied"/> is not an exception to that second rule; it is a case the
-/// evidence takes out from under it. Our marker recording our own fingerprint over classes that
-/// declare nothing is more than <see cref="SchemaStatus.Foreign"/> ever carries, and it is not a
-/// shape a machine running someone else's schema can be in. It permits Remove and only Remove -
+/// <see cref="SchemaStatus.OursEmptied"/> is not an exception to the second half of that; it is a
+/// case the evidence takes out from under it. Our marker recording our own fingerprint over classes
+/// that declare nothing is more than <see cref="SchemaStatus.Foreign"/> ever carries, and it is not
+/// a shape a machine running someone else's schema can be in. It permits Remove and only Remove -
 /// the owner has to be able to undo what this app did.
 /// </para>
 /// <para>
-/// And a third, which is the design's own: registering is not proving.
-/// <see cref="SchemaStatus.Ours"/> unlocks nothing. Only <see cref="SchemaStatus.OursGated"/>,
-/// which is the same registration with both hardware gates passed <em>against this fingerprint</em>,
-/// lets a write through.
+/// <em>Writes.</em> Registering is not proving, and proving does not depend on having registered.
+/// Gate A reads the firmware and checks every answer against the known-good reading; Gate B proves
+/// the <c>Set</c> class resolves. Neither one asks whose schema it is. So
+/// <see cref="SchemaStatus.Ours"/> unlocks nothing and <see cref="SchemaStatus.Foreign"/> unlocks
+/// nothing, while <see cref="SchemaStatus.OursGated"/> and <see cref="SchemaStatus.ForeignGated"/> -
+/// the same two registrations with both gates passed <em>against this fingerprint</em> - each let a
+/// write through.
+/// </para>
+/// <para>
+/// That is stricter than this app was before the feature existed, not looser: it then wrote to
+/// Gigabyte's schema with no verification at all.
 /// </para>
 /// </remarks>
 public static class SchemaState
 {
-    /// <summary>Decides which of the six states a machine is in.</summary>
+    /// <summary>Decides which of the seven states a machine is in.</summary>
     /// <param name="live">What was found on the machine.</param>
     /// <param name="expectedFingerprint">The fingerprint our install file records, which is the
-    /// mapping we would put there and the mapping the gates were earned against.</param>
-    /// <param name="gatesRecorded">Whether both hardware gates have been recorded as passed. It is
-    /// only consulted once the registration has already been established as ours, so a stale
-    /// record cannot unlock anything on its own.</param>
+    /// mapping we would put there. It decides ownership and nothing else - the gates are earned
+    /// against whatever the classes bind, which on a Control Center machine is not this.</param>
+    /// <param name="gatesRecorded">Whether both hardware gates have been recorded as passed
+    /// <em>against the mapping these classes bind today</em>. Its one caller is
+    /// <see cref="OpenAorus.Hardware.Config.SchemaRecord.ProvenFor"/>, which is where that
+    /// comparison is made; a record earned against a schema that has since moved arrives here as
+    /// false.</param>
     /// <returns>The state.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="live"/> or
     /// <paramref name="expectedFingerprint"/> is null.</exception>
@@ -178,8 +208,10 @@ public static class SchemaState
         // up before it is a machine to register - and it is never one to write through.
         if (!live.AllClassesPresent) return SchemaStatus.Partial;
 
-        // All four, and no evidence we put them there.
-        if (!live.MarkerPresent) return SchemaStatus.Foreign;
+        // All four, and no evidence we put them there. Control Center's, and left alone either
+        // way - but the gates are about the mapping and not about the owner, so a machine that has
+        // passed them writes.
+        if (!live.MarkerPresent) return SomebodyElses(live, gatesRecorded);
 
         // All four and our marker, over a mapping that is not the one we install. Someone
         // recompiled by hand, or an older version of us registered it. Either way the marker is
@@ -192,10 +224,22 @@ public static class SchemaState
         if (!string.Equals(live.LiveFingerprint, expectedFingerprint, StringComparison.Ordinal))
             return WasOursBeforeTheRebuild(live, expectedFingerprint)
                 ? SchemaStatus.OursEmptied
-                : SchemaStatus.Foreign;
+                : SomebodyElses(live, gatesRecorded);
 
         return gatesRecorded ? SchemaStatus.OursGated : SchemaStatus.Ours;
     }
+
+    /// <summary>Which of the two not-ours states a machine is in.</summary>
+    /// <remarks>
+    /// The live fingerprint has to be there. <paramref name="gatesRecorded"/> is a comparison
+    /// against it, so a machine nothing could fingerprint is one no record can have been earned
+    /// against - and null matching nothing is the same answer given here that
+    /// <see cref="Config.SchemaRecord.ProvenFor"/> gives, rather than a second opinion about it.
+    /// </remarks>
+    private static SchemaStatus SomebodyElses(SchemaSnapshot live, bool gatesRecorded) =>
+        gatesRecorded && live.LiveFingerprint is not null
+            ? SchemaStatus.ForeignGated
+            : SchemaStatus.Foreign;
 
     /// <summary>
     /// The live fingerprint a machine renders when every method-bearing class is present and
@@ -239,12 +283,17 @@ public static class SchemaState
     /// <param name="status">The state.</param>
     /// <returns>True for a machine with nothing on it, or one with leftovers to clear first.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="status"/> is not one of the
-    /// six.</exception>
+    /// seven.</exception>
     public static bool CanInstall(SchemaStatus status) => status switch
     {
         SchemaStatus.Absent => true,
         SchemaStatus.Partial => true, // After a remove, which the installer runs first.
         SchemaStatus.Foreign => false,
+
+        // Passing the gates proves the mapping works. It says nothing about whose registration it
+        // is, and two schemas over one GUID is no less untested for having been checked.
+        SchemaStatus.ForeignGated => false,
+
         SchemaStatus.Ours => false,
         SchemaStatus.OursGated => false,
 
@@ -262,12 +311,17 @@ public static class SchemaState
     /// <returns>True only where every class the remove file names is one we are entitled to
     /// delete.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="status"/> is not one of the
-    /// six.</exception>
+    /// seven.</exception>
     public static bool CanRemove(SchemaStatus status) => status switch
     {
         SchemaStatus.Absent => false, // Nothing to take away.
         SchemaStatus.Partial => true, // The leftovers are ours: the marker is deleted last.
         SchemaStatus.Foreign => false, // Deleting by Gigabyte's names would break Gigabyte's software.
+
+        // And no less so for having been checked. If anything more: this is the machine whose
+        // Control Center the owner has just watched work.
+        SchemaStatus.ForeignGated => false,
+
         SchemaStatus.Ours => true,
         SchemaStatus.OursGated => true,
 
@@ -282,15 +336,24 @@ public static class SchemaState
 
     /// <summary>Whether fan and battery writes are allowed on a machine in this state.</summary>
     /// <param name="status">The state.</param>
-    /// <returns>True in exactly one of the six states.</returns>
+    /// <returns>True in exactly the two states where both gates have been passed against the
+    /// mapping the classes bind now, whoever registered it.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="status"/> is not one of the
-    /// six.</exception>
+    /// seven.</exception>
     public static bool WritesUnlocked(SchemaStatus status) => status switch
     {
         SchemaStatus.OursGated => true,
+
+        // The one the app is normally installed onto. Gate A read every method off these classes
+        // and matched the answers against the known-good reading, Gate B resolved the Set class,
+        // and neither of those is a question about ownership. Refusing here switched fan and
+        // battery control off on a working Control Center machine and offered no way back, since
+        // CanInstall is rightly false too.
+        SchemaStatus.ForeignGated => true,
+
         SchemaStatus.Absent => false,
         SchemaStatus.Partial => false,
-        SchemaStatus.Foreign => false,
+        SchemaStatus.Foreign => false, // Registered is not proven, whoever registered it.
         SchemaStatus.Ours => false, // Registered is not proven. See the remarks on this class.
         SchemaStatus.OursEmptied => false, // The classes declare no methods. There is nothing to call.
         _ => throw Unknown(status),
@@ -300,11 +363,19 @@ public static class SchemaState
     /// <param name="status">The state.</param>
     /// <returns>Owner-facing prose, in the voice of the model-status banner.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="status"/> is not one of the
-    /// six.</exception>
+    /// seven.</exception>
     /// <remarks>
+    /// <para>
     /// Every one of these names a cause. What the owner sees today is "step 1/5 setCurrentFanStep
     /// failed: not found", one step into a sequence, which describes a symptom of a machine whose
     /// schema was uninstalled by somebody else's uninstaller.
+    /// </para>
+    /// <para>
+    /// And every one of them names the way out where there is one. This is the same text the
+    /// startup banner shows, so a state that said "OpenAorus will neither register over that nor
+    /// remove it" and stopped there would be telling a Control Center owner that nothing can be
+    /// done on the very machine where the checks are all that is wanted.
+    /// </para>
     /// </remarks>
     public static string Explain(SchemaStatus status) => status switch
     {
@@ -317,7 +388,15 @@ public static class SchemaState
             "The Gigabyte WMI classes are already registered by something else - Control Center, or " +
             "a hand-compiled MOF. OpenAorus will neither register over that nor remove it: the " +
             "classes carry Gigabyte's names, so removing them would break software OpenAorus did " +
-            "not install.",
+            "not install. It can still check that registration, and fan and battery writes stay " +
+            "disabled until the read check and the charge-limit round trip have both passed " +
+            "against it. Settings runs them.",
+
+        SchemaStatus.ForeignGated =>
+            "The Gigabyte WMI classes on this machine were registered by something else - Control " +
+            "Center, or a hand-compiled MOF - and both hardware checks passed against them, so fan " +
+            "and battery controls are available. OpenAorus will still neither register over that " +
+            "registration nor remove it, and the checks stop counting the moment it changes.",
 
         SchemaStatus.Partial =>
             "Only part of the Gigabyte WMI registration is on this machine, which is what a " +
@@ -358,25 +437,29 @@ public static class SchemaState
     /// unconfigured.
     /// </para>
     /// <para>
-    /// It says OpenAorus has not registered and proved the interface, rather than that nothing is
-    /// registered at all, because <see cref="SchemaStatus.Foreign"/> is a locked state on a machine
-    /// where the classes are present - Control Center's - and telling that owner nothing is
-    /// registered would send them looking for a fault that is not there.
+    /// It says the interface has not been proved, and does not say who registered it, because the
+    /// five locked states include <see cref="SchemaStatus.Foreign"/> - a machine where the classes
+    /// are present and are Control Center's. Telling that owner nothing is registered would send
+    /// them looking for a fault that is not there, and telling them it is not <em>ours</em> would
+    /// point at the one thing that is neither wrong nor going to change.
     /// </para>
     /// </remarks>
     public static string LockedRefusal(string what)
     {
         ArgumentNullException.ThrowIfNull(what);
 
-        return "OpenAorus has not registered and proved the Gigabyte WMI interface on this " +
-               $"machine, so {what} is switched off. Settings says what state the registration is " +
-               "in and offers whatever can be done about it.";
+        return "OpenAorus has not proved the Gigabyte WMI interface on this machine, so " +
+               $"{what} is switched off. Settings says what state the registration is in and " +
+               "offers whatever can be done about it.";
     }
 
     /// <summary>
-    /// Thrown rather than defaulted, so that a seventh state has to be answered for at every one of
+    /// Thrown rather than defaulted, so that an eighth state has to be answered for at every one of
     /// these four sites instead of quietly reading as "no" at three of them and blank at the fourth.
     /// </summary>
+    /// <remarks><see cref="SchemaStatus.ForeignGated"/> is what this is for. Adding it meant four
+    /// separate answers, and a default arm would have silently given it the locked, unremovable,
+    /// unregisterable "no" at three sites - which is the regression it exists to undo.</remarks>
     private static ArgumentOutOfRangeException Unknown(SchemaStatus status) =>
-        new(nameof(status), status, "Not one of the six schema states.");
+        new(nameof(status), status, "Not one of the seven schema states.");
 }

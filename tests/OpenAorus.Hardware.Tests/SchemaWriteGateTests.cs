@@ -43,11 +43,15 @@ public class SchemaWriteGateTests
 
         var r = await fans.ApplyAsync(FanMode.Normal);
 
-        Assert.Contains("not registered", r.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not proved", r.Error!, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Settings", r.Error!, StringComparison.Ordinal);
         // Never the symptom the owner saw before this release.
         Assert.DoesNotContain("step 1/", r.Error!, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("not found", r.Error!, StringComparison.OrdinalIgnoreCase);
+        // And never "not registered", which is false on a Control Center machine - where the
+        // classes are all there, this app will never register anything, and the only thing
+        // missing is the pair of checks.
+        Assert.DoesNotContain("not registered", r.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -80,9 +84,10 @@ public class SchemaWriteGateTests
     {
         var r = new BatteryController(new FakeGigabyteWmi(), () => false).SetLimit(true, 80);
 
-        Assert.Contains("not registered", r.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not proved", r.Error!, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Settings", r.Error!, StringComparison.Ordinal);
         Assert.DoesNotContain("SetChargePolicy", r.Error!, StringComparison.Ordinal);
+        Assert.DoesNotContain("not registered", r.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

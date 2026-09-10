@@ -17,8 +17,9 @@ public partial class SettingsViewModel : ObservableObject
 
     /// <summary>Whether this machine may be written to at all.</summary>
     /// <remarks>Two conditions, and both have to hold. The model has to be one whose duty scale
-    /// the app knows, and the WMI schema has to have been registered and proved - registering
-    /// alone unlocks nothing. See <see cref="OpenAorus.Hardware.Wmi.Schema.SchemaState"/>.</remarks>
+    /// the app knows, and the WMI schema on it has to have passed both hardware gates - being
+    /// registered alone unlocks nothing, whoever registered it. See
+    /// <see cref="OpenAorus.Hardware.Wmi.Schema.SchemaState"/>.</remarks>
     public bool CanWrite => _s.Profile.CanWrite && _s.Schema.WritesUnlocked;
 
     public string SettingsPath => _s.Store.Path;

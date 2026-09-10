@@ -15,10 +15,18 @@ namespace OpenAorus.Hardware.Tests;
 /// The Settings card that registers the interface, proves it, and takes it back out.
 /// </summary>
 /// <remarks>
+/// <para>
 /// It never decides anything itself. <see cref="SchemaState"/> says which of the three actions a
 /// machine is entitled to and <see cref="SchemaRegistrar"/> re-decides at the moment of acting;
 /// what is checked here is that the card offers exactly what those two permit, and that every
 /// refusal names a cause rather than the "not found" the owner used to be shown.
+/// </para>
+/// <para>
+/// The machine that matters most here is the one carrying Control Center's own registration, which
+/// is what most laptops this app is installed on are carrying. Register and Remove are refused
+/// there and always will be, so the check has to be offered - it is the whole of that owner's route
+/// to a working app, and withholding it left them read-only with no button that could help.
+/// </para>
 /// </remarks>
 public class SchemaViewModelTests : IDisposable
 {
@@ -107,13 +115,75 @@ public class SchemaViewModelTests : IDisposable
     }
 
     [Fact]
-    public void A_machine_control_center_registered_is_offered_neither()
+    public void A_machine_control_center_registered_is_offered_the_check_and_neither_other_button()
     {
+        // Install and Remove are refused here and always will be, so the check is the only
+        // button on the card - and the only one this owner needs, because what a passing run
+        // unlocks is the writes and not the registration.
         var rig = Build(ControlCenterMachine());
 
         Assert.Equal(SchemaStatus.Foreign, rig.Vm.Status);
+        Assert.True(rig.Vm.CanRunGates);
         Assert.False(rig.Vm.CanInstall);
         Assert.False(rig.Vm.CanRemove);
+        Assert.False(rig.Services.Schema.WritesUnlocked);
+    }
+
+    [Fact]
+    public async Task Running_the_gates_on_a_control_center_machine_unlocks_writes_and_registers_nothing()
+    {
+        var rig = Build(ControlCenterMachine(), HealthyController());
+
+        await rig.Vm.RunGatesCommand.ExecuteAsync(null);
+
+        Assert.Equal(SchemaStatus.ForeignGated, rig.Vm.Status);
+        Assert.True(rig.Services.Schema.WritesUnlocked);
+        Assert.False(rig.Vm.CanInstall);
+        Assert.False(rig.Vm.CanRemove);
+        Assert.Empty(rig.Sys.MofCompCalls);
+        Assert.Empty(rig.Sys.FilesWritten);
+        // Nothing was registered, so nothing claims to have been. The pass stands on the
+        // fingerprint alone, which is the only thing that could vouch for it anyway.
+        Assert.False(rig.Services.Settings.Schema.Registered);
+        Assert.True(rig.Services.Settings.Schema.GatesPassed);
+        Assert.Equal(Fingerprint, rig.Services.Settings.Schema.Fingerprint);
+    }
+
+    [Fact]
+    public async Task A_pass_over_control_centers_own_schema_expires_the_moment_that_schema_changes()
+    {
+        var sys = ControlCenterMachine();
+        var rig = Build(sys, HealthyController());
+        await rig.Vm.RunGatesCommand.ExecuteAsync(null);
+        Assert.True(rig.Services.Schema.WritesUnlocked);
+
+        // Control Center updates itself: every name still there, one of them now reaching a
+        // different firmware method. Every id the gates proved is an id nobody has checked.
+        sys.MethodIds[WmiSchemaParser.GetClass] =
+            new Dictionary<string, int>(sys.MethodIds[WmiSchemaParser.GetClass], StringComparer.Ordinal)
+            {
+                ["GetCPUFanDuty"] = 71,
+            };
+
+        await rig.Vm.RefreshAsync();
+
+        Assert.Equal(SchemaStatus.Foreign, rig.Vm.Status);
+        Assert.False(rig.Services.Schema.WritesUnlocked);
+    }
+
+    [Fact]
+    public async Task Install_and_remove_stay_refused_on_a_control_center_machine_that_has_passed_the_gates()
+    {
+        var rig = Build(ControlCenterMachine(), HealthyController());
+        await rig.Vm.RunGatesCommand.ExecuteAsync(null);
+
+        await rig.Vm.InstallCommand.ExecuteAsync(null);
+        await rig.Vm.RemoveCommand.ExecuteAsync(null);
+
+        Assert.Empty(rig.Sys.MofCompCalls);
+        Assert.Empty(rig.Sys.FilesDeleted);
+        Assert.Equal(SchemaStatus.ForeignGated, rig.Vm.Status);
+        Assert.True(rig.Services.Schema.WritesUnlocked);
     }
 
     [Fact]

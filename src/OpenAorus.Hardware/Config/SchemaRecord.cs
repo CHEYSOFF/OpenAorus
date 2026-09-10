@@ -36,6 +36,14 @@ public sealed class SchemaRecord
     public static readonly TimeSpan MaxFutureSkew = TimeSpan.FromHours(1);
 
     /// <summary>Whether this app installed the schema that is on this machine.</summary>
+    /// <remarks>
+    /// Ownership, and nothing about proof. It is not read by <see cref="ProvenFor"/> and it is not
+    /// read by <see cref="Repair"/>, because the gates prove a mapping rather than a registration:
+    /// the machines this app is most often installed on are the ones carrying Control Center's own
+    /// schema, and a record that could not hold a pass over one of those left those machines
+    /// read-only with no way back. What may be installed and what may be removed is decided from
+    /// the machine itself - the marker class and the live fingerprint - never from here.
+    /// </remarks>
     public bool Registered { get; set; }
 
     /// <summary>The binding fingerprint the gates were run against, or null if none was recorded.</summary>
@@ -61,12 +69,20 @@ public sealed class SchemaRecord
     /// <summary>Whether this record unlocks writes on the schema a machine is carrying now.</summary>
     /// <param name="liveFingerprint">The fingerprint recomputed from the live classes, or null if
     /// there was no method-bearing class to compute one from.</param>
-    /// <returns>True only for a registration of ours that passed both gates against this exact
-    /// mapping.</returns>
-    /// <remarks>Null never matches, which is the right answer rather than a lenient one: a
-    /// registration nothing could fingerprint is not one any past pass can vouch for.</remarks>
+    /// <returns>True only for a pass earned against this exact mapping.</returns>
+    /// <remarks>
+    /// <para>
+    /// Null never matches, which is the right answer rather than a lenient one: a registration
+    /// nothing could fingerprint is not one any past pass can vouch for.
+    /// </para>
+    /// <para>
+    /// <see cref="Registered"/> is deliberately not consulted. The fingerprint is the whole of the
+    /// safety here - it says the classes bind today exactly what the gates were run against - and
+    /// who compiled those classes changes nothing about that. Requiring ours was the same mistake
+    /// as refusing writes on <c>SchemaStatus.Foreign</c>, restated in the settings file.
+    /// </para>
+    /// </remarks>
     public bool ProvenFor(string? liveFingerprint) =>
-        Registered &&
         GatesPassed &&
         Fingerprint is not null &&
         liveFingerprint is not null &&
@@ -81,12 +97,17 @@ public sealed class SchemaRecord
     /// in <see cref="SettingsStore.Load"/>, one notice, no second mechanism.
     /// </para>
     /// <para>
-    /// Three ways a record can claim more than it earned, and every one of them is a pass this app
-    /// never wrote. A pass with no fingerprint could never be invalidated, because there would be
-    /// nothing to compare the live schema against. A pass with no registration is a pass over
-    /// somebody else's schema. A pass dated in the future, or dated not at all, was not stamped by
-    /// a gate run. Each clears <see cref="GatesPassed"/> and nothing else: the surrounding record
-    /// is left to say what it says, and the gates can simply be run again.
+    /// Two ways a record can claim more than it earned, and both are a pass this app never wrote. A
+    /// pass with no fingerprint could never be invalidated, because there would be nothing to
+    /// compare the live schema against. A pass dated in the future, or dated not at all, was not
+    /// stamped by a gate run. Each clears <see cref="GatesPassed"/> and nothing else: the
+    /// surrounding record is left to say what it says, and the gates can simply be run again.
+    /// </para>
+    /// <para>
+    /// A pass over a registration this app did not make is NOT one of them, and used to be. That is
+    /// the ordinary state of a laptop with Control Center on it once the owner has run the checks,
+    /// and clearing it here switched fan and battery control off on exactly those machines every
+    /// time the settings file was loaded.
     /// </para>
     /// <para>
     /// It cannot grant a pass. Every branch here writes <c>false</c>, which is what stops a
@@ -98,7 +119,7 @@ public sealed class SchemaRecord
     {
         if (!GatesPassed) return false;
 
-        if (!Registered || string.IsNullOrWhiteSpace(Fingerprint) ||
+        if (string.IsNullOrWhiteSpace(Fingerprint) ||
             When is not { } when || when > DateTime.Now + MaxFutureSkew)
         {
             GatesPassed = false;

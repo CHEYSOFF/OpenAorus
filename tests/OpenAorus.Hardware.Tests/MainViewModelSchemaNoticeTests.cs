@@ -79,10 +79,28 @@ public class MainViewModelSchemaNoticeTests : IDisposable
         return sys;
     }
 
-    /// <summary>The record a completed gate run leaves behind.</summary>
-    private static SchemaRecord Proved() => new()
+    /// <summary>A machine with Control Center's own registration on it and no marker of ours.</summary>
+    private static FakeSchemaSystem ControlCenterMachine()
     {
-        Registered = true,
+        var sys = new FakeSchemaSystem();
+        foreach (var name in new[]
+                 {
+                     WmiSchemaParser.GetClass, WmiSchemaParser.SetClass,
+                     WmiSchemaParser.DataClass, WmiSchemaParser.EventClass,
+                 })
+            sys.Classes.Add(name);
+        foreach (var (k, v) in SchemaFingerprintTests.LiveFrom(WmiSchemaParserTests.Recovered()))
+            sys.MethodIds[k] = v;
+        return sys;
+    }
+
+    /// <summary>The record a completed gate run leaves behind.</summary>
+    /// <param name="registered">Whether this app installed what was proved. False on a Control
+    /// Center machine, where the run registers nothing and the pass is over somebody else's
+    /// classes - which is a state the record has to be able to hold.</param>
+    private static SchemaRecord Proved(bool registered = true) => new()
+    {
+        Registered = registered,
         GatesPassed = true,
         Fingerprint = SchemaMof.Fingerprint,
         When = DateTime.Now,
@@ -152,6 +170,39 @@ public class MainViewModelSchemaNoticeTests : IDisposable
         Assert.True(vm.CanWrite);
         Assert.True(vm.Battery.CanWrite);
         Assert.True(vm.SettingsVm.CanWrite);
+    }
+
+    [Fact]
+    public void A_control_center_machine_is_told_what_is_missing_is_the_checks_and_not_the_registration()
+    {
+        // The state this app is normally installed into. The banner has to name the way out, and
+        // the way out is not registering anything: Install is refused here and always will be.
+        var vm = Build(ControlCenterMachine());
+
+        Assert.Equal(BannerKind.Warning, vm.Banner);
+        Assert.False(vm.CanWrite);
+        Assert.Contains("Settings", vm.BannerText, StringComparison.Ordinal);
+        Assert.Contains("read check", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("not registered", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_control_center_machine_that_has_passed_both_checks_says_nothing_and_unlocks_everything()
+    {
+        // The regression, as the owner met it: fan and battery control gone on a machine that had
+        // worked for weeks, with no button on the card that could give it back.
+        var vm = Build(ControlCenterMachine(), record: Proved(registered: false));
+
+        Assert.Equal(BannerKind.None, vm.Banner);
+        Assert.Equal("", vm.BannerText);
+        Assert.True(vm.CanWrite);
+        Assert.True(vm.Battery.CanWrite);
+        Assert.True(vm.SettingsVm.CanWrite);
+
+        // And still nobody's registration to install over or take away.
+        Assert.False(vm.SettingsVm.Schema.CanInstall);
+        Assert.False(vm.SettingsVm.Schema.CanRemove);
+        Assert.True(vm.SettingsVm.Schema.CanRunGates);
     }
 
     [Fact]

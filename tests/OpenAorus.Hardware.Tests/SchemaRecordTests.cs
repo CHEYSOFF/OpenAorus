@@ -30,12 +30,21 @@ public class SchemaRecordTests
     }
 
     [Fact]
-    public void A_record_that_claims_a_pass_without_a_registration_is_cleared()
+    public void A_pass_earned_over_a_registration_this_app_did_not_make_is_kept()
     {
-        var r = new SchemaRecord { Registered = false, GatesPassed = true, Fingerprint = "aaa" };
+        // The commonest machine there is: Control Center installed and working, and the owner has
+        // run the two checks against it. The gates prove a mapping, not an ownership, so there is
+        // nothing wrong with this record - and clearing it, which is what used to happen on every
+        // load, switched fan and battery control off on exactly those machines with no way back,
+        // since registering over Control Center's schema is refused and always will be.
+        var r = new SchemaRecord
+        {
+            Registered = false, GatesPassed = true, Fingerprint = "aaa",
+            When = DateTime.Now.AddMinutes(-1),
+        };
 
-        Assert.True(r.Repair());
-        Assert.False(r.GatesPassed);
+        Assert.False(r.Repair());
+        Assert.True(r.GatesPassed);
     }
 
     [Fact]
@@ -131,12 +140,17 @@ public class SchemaRecordTests
     }
 
     [Fact]
-    public void A_record_that_is_not_registered_proves_nothing_either()
+    public void Who_registered_the_schema_has_no_say_in_what_the_pass_proves()
     {
+        // The fingerprint is the whole of the safety: it says these classes bind today exactly
+        // what the gates were run against. Who compiled them changes nothing about that, and the
+        // drift test is unaffected either way.
         var r = Passed("aaa");
         r.Registered = false;
 
-        Assert.False(r.ProvenFor("aaa"));
+        Assert.True(r.ProvenFor("aaa"));
+        Assert.False(r.ProvenFor("bbb"));
+        Assert.False(r.ProvenFor(null));
     }
 
     [Fact]

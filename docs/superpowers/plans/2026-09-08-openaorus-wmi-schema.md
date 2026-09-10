@@ -1191,6 +1191,26 @@ that a Remove would delete a registration GCC also depends on, so Task 6 re-chec
 removal rather than trusting a classification taken at startup, and Task 9's card warns when GCC is
 detected running. `OWNER VERIFY` — `VERIFY.md` 8.6.
 
+> **Correction, 2026-09-11 — the `Writes` column above is wrong for `Foreign`, and this plan is
+> where the error came from.** "Only after both gates pass does the app enable writes" was written
+> about *our* registration and got applied to a working third-party one, so a machine with Control
+> Center installed — the normal state, and the one this project ran on for weeks — lost fan and
+> battery control entirely, with no route back: `CanInstall(Foreign)` is correctly false, so the
+> owner could not register ours either.
+>
+> Ownership and proof are two different questions. **Ownership governs install and removal** — the
+> `Install` and `Remove` columns above are right as they stand and do not change. **The gates govern
+> writes**, and neither gate asks whose schema it is: Gate A reads the firmware and checks the
+> answers against the known-good reading, Gate B proves the `Set` class resolves. A schema that
+> passes both is proven to work whoever installed it.
+>
+> So there is a further state, `ForeignGated` — `Foreign` with both gates passed against the mapping
+> the classes bind now — which **writes**, and still refuses install and refuses remove. It expires
+> by fingerprint exactly as `OursGated` does. `SchemaViewModel` offers "Check it works" on a
+> `Foreign` machine so the owner can reach it; on such a machine it is the only button there is,
+> and the only one needed. This is *stricter* than the app before this feature existed, which wrote
+> to Gigabyte's schema with no verification at all.
+
 - [ ] **Step 1: Write the failing tests**
 
 `tests/OpenAorus.Hardware.Tests/SchemaStateTests.cs`:

@@ -17,7 +17,7 @@ public sealed class BatteryController
     private readonly Func<bool> _writesUnlocked;
 
     /// <param name="wmi">The only door to the embedded controller.</param>
-    /// <param name="writesUnlocked">Whether the WMI schema has been registered and proved, read at
+    /// <param name="writesUnlocked">Whether the WMI schema on this machine has been proved, read at
     /// every write rather than captured. Null leaves the gate open, so every construction site that
     /// predates the schema feature is unchanged.</param>
     public BatteryController(IGigabyteWmi wmi, Func<bool>? writesUnlocked = null)

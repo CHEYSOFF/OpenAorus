@@ -28,6 +28,12 @@ namespace OpenAorus.App.ViewModels;
 /// both gates against this exact mapping moves the machine to
 /// <see cref="SchemaStatus.OursGated"/>.
 /// </para>
+/// <para>
+/// WHICH IS WHY "CHECK IT WORKS" IS OFFERED ON A MACHINE THIS APP NEVER REGISTERED. Register and
+/// Remove are refused over Control Center's schema and always will be, so on the commonest machine
+/// of all the check is the only button there is - and it is the only one such an owner needs, since
+/// what a passing run unlocks is the writes, not the registration.
+/// </para>
 /// </remarks>
 public sealed partial class SchemaViewModel : ObservableObject
 {
@@ -80,15 +86,24 @@ public sealed partial class SchemaViewModel : ObservableObject
     public bool CanRemove => !IsBusy && _s.Schema.Report.CanRemove;
 
     /// <summary>Whether the Check it works button is offered.</summary>
-    /// <remarks>Only where the registration is already established as ours. Gate B writes to the
-    /// firmware, so it is not something to offer over a mapping the app cannot vouch for - and on
-    /// a machine that is already <see cref="SchemaStatus.OursGated"/> it stays offered, because
-    /// re-proving the same registration is the one diagnostic the owner has.</remarks>
-    public bool CanRunGates => !IsBusy && RegistrationIsOurs;
+    /// <remarks>Wherever all four classes are there and bind something, whoever put them there.
+    /// Gate B writes to the firmware, so it is not offered over half a registration or over classes
+    /// that declare nothing - but it is emphatically offered on a Control Center machine, which is
+    /// the only route such an owner has to a working app: Install is refused there and always will
+    /// be. On a machine already gated it stays offered, because re-proving the same registration is
+    /// the one diagnostic the owner has.</remarks>
+    public bool CanRunGates => !IsBusy && GatesCanBeRun;
 
-    /// <summary>Whether the classes on this machine are the ones this app installed.</summary>
+    /// <summary>Whether there is a registration on this machine for the gates to be run against.</summary>
     /// <remarks>Read by <see cref="RunGatesAsync"/> rather than <see cref="CanRunGates"/>, which
     /// has already gone false by the time the command is running: the busy latch closes first.</remarks>
+    private bool GatesCanBeRun => Status is
+        SchemaStatus.Ours or SchemaStatus.OursGated or
+        SchemaStatus.Foreign or SchemaStatus.ForeignGated;
+
+    /// <summary>Whether the classes on this machine are the ones this app installed.</summary>
+    /// <remarks>Ownership only. It decides what the gate record writes down about who registered
+    /// the schema, and nothing about whether the gates may run or what they unlock.</remarks>
     private bool RegistrationIsOurs => Status is SchemaStatus.Ours or SchemaStatus.OursGated;
 
     /// <summary>Whether the missing thing is administrator rights rather than the schema.</summary>
@@ -147,11 +162,12 @@ public sealed partial class SchemaViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            if (!RegistrationIsOurs)
+            if (!GatesCanBeRun)
             {
                 // Not a state the buttons can reach, and checked anyway: the machine may have
                 // moved since the window was opened, and the gates end in a write.
-                Message = "There is no OpenAorus registration on this machine to check. " + StatusText;
+                Message = "There is no working Gigabyte WMI registration on this machine to " +
+                          "check. " + StatusText;
                 return;
             }
 
@@ -166,10 +182,14 @@ public sealed partial class SchemaViewModel : ObservableObject
                 () => SchemaGateRunner.Run(_s.Wmi, KnownGoodReading.Reference, _s.Profile));
 
             var record = _s.Schema.Record;
-            // The machine's own marker and fingerprint say this registration is ours, which is
-            // better evidence than the settings file - so a file that lost the flag is corrected
-            // here rather than leaving a proved machine locked with nothing to press.
-            record.Registered = true;
+
+            // Ownership is written down as the machine reports it and not as the run implies.
+            // Where the marker and the fingerprint say the registration is ours, a settings file
+            // that lost the flag is corrected here; where they say it is Control Center's, the
+            // flag stays false, because this run registered nothing. Neither answer affects what
+            // the pass below unlocks - the fingerprint does that.
+            if (RegistrationIsOurs) record.Registered = true;
+
             record.Fingerprint = fingerprint;
             record.GatesPassed = run.Passed;
             record.When = DateTime.Now;
