@@ -1,0 +1,16 @@
+// GENERATED FILE - DO NOT EDIT.
+// Printed by OpenAorus.Hardware.Wmi.Schema.MofWriter from
+// docs/research/gb-wmiacpi-methods-aorus-17g-kd.txt, the schema recovered from an AORUS
+// 17G KD while Gigabyte Control Center was still installed.
+//
+// Undoes what the install file did, and nothing else: it declares nothing and writes no
+// data. NOFAIL makes every deletion idempotent, which is what lets the installer run
+// this as a rollback after a compile that may or may not have created anything.
+
+#pragma namespace("\\\\.\\root\\WMI")
+
+#pragma deleteclass("GB_WMIACPI_Get", NOFAIL)
+#pragma deleteclass("GB_WMIACPI_Set", NOFAIL)
+#pragma deleteclass("GB_WMIACPI_Data", NOFAIL)
+#pragma deleteclass("GB_WMIACPI_Event", NOFAIL)
+#pragma deleteclass("OpenAorus_SchemaMarker", NOFAIL)

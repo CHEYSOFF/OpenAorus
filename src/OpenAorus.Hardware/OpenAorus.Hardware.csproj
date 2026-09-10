@@ -10,4 +10,13 @@
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
   </ItemGroup>
 
+  <!-- mofcomp needs a path on disk and a single-file publish has no loose files, so both MOFs
+       ship inside the assembly and are written out at registration time. LogicalName is stated
+       rather than left to the SDK so that renaming the folder cannot silently change the name
+       SchemaMof asks for. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Wmi\Schema\GB_WMIACPI.mof" LogicalName="OpenAorus.Hardware.Wmi.Schema.GB_WMIACPI.mof" />
+    <EmbeddedResource Include="Wmi\Schema\GB_WMIACPI-remove.mof" LogicalName="OpenAorus.Hardware.Wmi.Schema.GB_WMIACPI-remove.mof" />
+  </ItemGroup>
+
 </Project>

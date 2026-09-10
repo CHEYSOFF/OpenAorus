@@ -1,0 +1,487 @@
+// GENERATED FILE - DO NOT EDIT.
+// Printed by OpenAorus.Hardware.Wmi.Schema.MofWriter from
+// docs/research/gb-wmiacpi-methods-aorus-17g-kd.txt, the schema recovered from an AORUS
+// 17G KD while Gigabyte Control Center was still installed.
+//
+// Every number below is a firmware method id or an ACPI buffer offset. None of them was
+// typed by hand. MofDriftTests reprints this file on every test run and fails if it and
+// the research file disagree, so editing this file directly will turn the suite red
+// rather than change anything.
+
+#pragma namespace("\\\\.\\root\\WMI")
+
+[dynamic, provider("WmiProv"), WMI, guid("{ABBC0F6F-8EA1-11d1-00A0-C90629100000}"),
+ Description("Gigabyte WMI Get method")]
+class GB_WMIACPI_Get
+{
+    [read] boolean Active;
+    [key, read] string InstanceName;
+
+    [WmiMethodId(70), Implemented, read, write, Description("Get CPU Fan Duty")]
+    void GetCPUFanDuty([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(71), Implemented, read, write, Description("Get GPU Fan Duty")]
+    void GetGPUFanDuty([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(72), Implemented, read, write, Description("Get Battery Cycle Count")]
+    void GetBatteryCount([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(73), Implemented, read, write, Description("Get Max Charge")]
+    void GetMaxCharge([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(80), Implemented, read, write, Description("Get PEG or SG")]
+    void GetPEGorSG([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(81), Implemented, read, write, Description("Get Nv Power Config")]
+    void GetNvPowerConfig([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(86), Implemented, read, write, Description("Get Thermal Sensor Data")]
+    void GetThermalData([out, WmiDataId(0), Description("Thermal1")] uint8 Thermal1, [out, WmiDataId(1), Description("Thermal2")] uint8 Thermal2, [out, WmiDataId(2), Description("Thermal3")] uint8 Thermal3);
+
+    [WmiMethodId(87), Implemented, read, write, Description("Get Nv Thermal Target")]
+    void GetNvThermalTarget([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(88), Implemented, read, write, Description("Check Heavy Loading")]
+    void CheckHeavyLoading([out, WmiDataId(0), Description("Status")] uint8 Status);
+
+    [WmiMethodId(89), Implemented, read, write, Description("Get Light Bar Status")]
+    void GetLightBar([in, WmiDataId(0), Description("Index")] uint8 Index, [out, WmiDataId(1), Description("Status")] uint8 Status, [out, WmiDataId(2), Description("Level")] uint8 Level, [out, WmiDataId(3), Description("Red")] uint8 Red, [out, WmiDataId(4), Description("Green")] uint8 Green, [out, WmiDataId(5), Description("Blue")] uint8 Blue);
+
+    [WmiMethodId(96), Implemented, read, write, Description("Get Deep Fan")]
+    void GetDeepFan([out, WmiDataId(0), Description("Temperature0")] uint8 Temperature0, [out, WmiDataId(1), Description("Temperature1")] uint8 Temperature1, [out, WmiDataId(2), Description("Temperature2")] uint8 Temperature2, [out, WmiDataId(3), Description("Temperature3")] uint8 Temperature3, [out, WmiDataId(4), Description("Temperature4")] uint8 Temperature4, [out, WmiDataId(5), Description("Speed0")] uint8 Speed0, [out, WmiDataId(6), Description("Speed1")] uint8 Speed1, [out, WmiDataId(7), Description("Speed2")] uint8 Speed2, [out, WmiDataId(8), Description("Speed3")] uint8 Speed3, [out, WmiDataId(9), Description("Speed4")] uint8 Speed4);
+
+    [WmiMethodId(97), Implemented, read, write, Description("Get Battery Health Status")]
+    void GetBatteryHealth([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(98), Implemented, read, write, Description("Get Fan Health Status")]
+    void GetFanHealth([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(99), Implemented, read, write, Description("Get Power On Time")]
+    void GetPowerOnTime([out, WmiDataId(0), Description("Year")] uint8 Year, [out, WmiDataId(1), Description("Month")] uint8 Month, [out, WmiDataId(2), Description("Day")] uint8 Day, [out, WmiDataId(3), Description("Hour")] uint8 Hour, [out, WmiDataId(4), Description("Minute")] uint8 Minute);
+
+    [WmiMethodId(100), Implemented, read, write, Description("Get Charge Policy")]
+    void GetChargePolicy([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(101), Implemented, read, write, Description("Get Charge Stop")]
+    void GetChargeStop([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(103), Implemented, read, write, Description("Get 10 Steps Fan Status")]
+    void GetStepFanStatus([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(104), Implemented, read, write, Description("Get Fan Index Value")]
+    void GetFanIndexValue([in, WmiDataId(0), Description("Index")] uint8 Index, [out, WmiDataId(1), Description("Temperature")] uint8 Temperture, [out, WmiDataId(2), Description("Speed")] uint8 Value);
+
+    [WmiMethodId(105), Implemented, read, write, Description("Get VR Mode Status")]
+    void GetVRStatus([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(106), Implemented, read, write, Description("Get Fixed Fan Status")]
+    void GetFixedFanStatus([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(107), Implemented, read, write, Description("Get Fixed Fan Speed")]
+    void GetFixedFanSpeed([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(108), Implemented, read, write, Description("Are Devices Exist")]
+    void IsDeviceExist([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(109), Implemented, read, write, Description("Get Battery Cycles1")]
+    void getBattCyc1([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(110), Implemented, read, write, Description("Get Battery Cycles")]
+    void getBattCyc([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(111), Implemented, read, write, Description("Get Fan PWM status")]
+    void GetFanPWMStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(112), Implemented, read, write, Description("Get Fan Adjust status")]
+    void GetFanAdjustStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(113), Implemented, read, write, Description("Getting Auto Fan Status")]
+    void GetAutoFanStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(122), Implemented, read, write, Description("Getting the USB charge under Sleep")]
+    void GetSleepUSBCharge([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(123), Implemented, read, write, Description("Getting the USB charge under Hibernation")]
+    void GetHibernationUSBCharge([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(124), Implemented, read, write, Description("Check UCF support")]
+    void CheckUCFSupport([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(125), Implemented, read, write, Description("Getting Fan Speed")]
+    void GetFanSpeed([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(126), Implemented, read, write, Description("Getting the Camera2 status")]
+    void GetCamera2([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(127), Implemented, read, write, Description("Getting the Touch Screen Support")]
+    void GetTouchScreenSupport([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(129), Implemented, read, write, Description("Getting AI Boost Status")]
+    void GetAIBoostStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(130), Implemented, read, write, Description("Get First Date")]
+    void GetFirstDate([out, WmiDataId(0), Description("Year")] uint8 Year, [out, WmiDataId(1), Description("Month")] uint8 Month, [out, WmiDataId(2), Description("Day")] uint8 Day, [out, WmiDataId(3), Description("Hour")] uint8 Hour, [out, WmiDataId(4), Description("Minute")] uint8 Minute);
+
+    [WmiMethodId(132), Implemented, read, write, Description("Getting Ec Value Boost Status")]
+    void GetEcValueBoostStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(133), Implemented, read, write, Description("Getting Whisper Mode")]
+    void GetWhisperMode([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(192), Implemented, read, write, Description("Getting the brightness")]
+    void GetBrightness([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(193), Implemented, read, write, Description("Getting the Bluetooth status")]
+    void GetBluetooth([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(194), Implemented, read, write, Description("Getting the WiFi status")]
+    void GetWiFi([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(195), Implemented, read, write, Description("Getting the W35G status")]
+    void GetW35G([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(196), Implemented, read, write, Description("Getting the Brightness Off status")]
+    void GetBirightnessOff([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(197), Implemented, read, write, Description("Getting the Camera status")]
+    void GetCamera([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(202), Implemented, read, write, Description("Getting the TouchPad status")]
+    void GetTouchPad([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(203), Implemented, read, write, Description("Getting the Winkey blocking status")]
+    void GetWinkeyBlocking([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(206), Implemented, read, write, Description("Getting the Turbo Mode status")]
+    void GetTurboMode([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(208), Implemented, read, write, Description("Getting the Smart Charge status")]
+    void GetSmartCharge([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(209), Implemented, read, write, Description("Check the support status of Smart Charge")]
+    void CheckSmartCharge([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(210), Implemented, read, write, Description("Check the Support status of Smart Turbo")]
+    void CheckSmartTurbo([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(211), Implemented, read, write, Description("Getting the USB3.0 status")]
+    void GetUSB30([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(213), Implemented, read, write, Description("Check the support status of USB3.0")]
+    void CheckUSB30([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(214), Implemented, read, write, Description("Getting the Docking status")]
+    void GetDockingStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(215), Implemented, read, write, Description("Getting the status of TouchScreen")]
+    void GetTouchScreen([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(219), Implemented, read, write, Description("Getting the level of SmartTurbo")]
+    void GetSmartTurbo([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(239), Implemented, read, write, Description("Get Lid status")]
+    void GetLid1Status([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(241), Implemented, read, write, Description("Getting the status of KeyboardMatrix")]
+    void GetKeyboardMatrix([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(242), Implemented, read, write, Description("Getting the Enable/Disable status of SmartTurbo")]
+    void GetSmartTurboStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(243), Implemented, read, write, Description("Getting the Enable/Disable status of G-Sensor")]
+    void GetGSensorStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(244), Implemented, read, write, Description("Getting the Enable/Disable status of Onboard LAN")]
+    void GetOnboardLANStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(245), Implemented, read, write, Description("Check the support status of Docking")]
+    void CheckDocking([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(246), Implemented, read, write, Description("Get Key Board Back Light Level")]
+    void GetKeyBoardBackLight([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(247), Implemented, read, write, Description("Query Light Sensor Level")]
+    void QueryLightSensor([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(249), Implemented, read, write, Description("Query Thermal Sensor Level")]
+    void QueryThermalSensor([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(250), Implemented, read, write, Description("Query Smart Cool Status")]
+    void GetSmartCool([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(251), Implemented, read, write, Description("Get Light Sensor Version")]
+    void GetLightSensorVersion([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(252), Implemented, read, write, Description("Check BIOS Mode")]
+    void CheckBIOSMode([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(254), Implemented, read, write, Description("Check 3G Module")]
+    void Check3GModule([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(225), Implemented, read, write, Description("getCpuTemperature")]
+    void getCpuTemp([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(226), Implemented, read, write, Description("getGpuTemperature1")]
+    void getGpuTemp1([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(227), Implemented, read, write, Description("getGpuTemperature2")]
+    void getGpuTemp2([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(228), Implemented, read, write, Description("getRpm1")]
+    void getRpm1([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(229), Implemented, read, write, Description("getRpm2")]
+    void getRpm2([out, WmiDataId(0), Description("Data")] uint16 Data);
+
+    [WmiMethodId(230), Implemented, read, write, Description("Get PEG2 or SG2")]
+    void GetPEG2orSG2([out, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(231), Implemented, read, write, Description("Get DynamicBoost Status")]
+    void GetDynamicBoostStatus([out, WmiDataId(0), Description("Data")] uint8 Data);
+};
+
+[dynamic, provider("WmiProv"), WMI, guid("{ABBC0F75-8EA1-11d1-00A0-C90629100000}"),
+ Description("Gigabyte WMI Set method")]
+class GB_WMIACPI_Set
+{
+    [read] boolean Active;
+    [key, read] string InstanceName;
+
+    [WmiMethodId(71), Implemented, read, write, Description("Set GPU Fan Duty")]
+    void SetGPUFanDuty([in, WmiDataId(0), Description("GPUFanDutyData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(73), Implemented, read, write, Description("Set Max Charge")]
+    void SetMaxCharge([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(80), Implemented, read, write, Description("Set PEG or SG")]
+    void SetPEGorSG([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(81), Implemented, read, write, Description("Set Nv Power Config")]
+    void SetNvPowerConfig([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(82), Implemented, read, write, Description("Set Nv D1")]
+    void SetNvD1([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(83), Implemented, read, write, Description("Set Nv D2")]
+    void SetNvD2([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(84), Implemented, read, write, Description("Set Nv D3")]
+    void SetNvD3([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(85), Implemented, read, write, Description("Set Nv D4")]
+    void SetNvD4([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(86), Implemented, read, write, Description("Set Nv D5")]
+    void SetNvD5([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(87), Implemented, read, write, Description("Set Nv Thermal Target")]
+    void SetNvThermalTarget([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(88), Implemented, read, write, Description("Set Super Quiet")]
+    void SetSuperQuiet([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(89), Implemented, read, write, Description("Set Light Bar Status")]
+    void SetLightBar([in, WmiDataId(0), Description("Index")] uint8 Index, [in, WmiDataId(1), Description("Status")] uint8 Status, [in, WmiDataId(2), Description("Level")] uint8 Level, [in, WmiDataId(3), Description("Red")] uint8 Red, [in, WmiDataId(4), Description("Green")] uint8 Green, [in, WmiDataId(5), Description("Blue")] uint8 Blue);
+
+    [WmiMethodId(96), Implemented, read, write, Description("Set Deep Fan")]
+    void SetDeepFan([in, WmiDataId(0), Description("Temperature0")] uint8 Temperature0, [in, WmiDataId(1), Description("Temperature1")] uint8 Temperature1, [in, WmiDataId(2), Description("Temperature2")] uint8 Temperature2, [in, WmiDataId(3), Description("Temperature3")] uint8 Temperature3, [in, WmiDataId(4), Description("Temperature4")] uint8 Temperature4, [in, WmiDataId(5), Description("Speed0")] uint8 Speed0, [in, WmiDataId(6), Description("Speed1")] uint8 Speed1, [in, WmiDataId(7), Description("Speed2")] uint8 Speed2, [in, WmiDataId(8), Description("Speed3")] uint8 Speed3, [in, WmiDataId(9), Description("Speed4")] uint8 Speed4);
+
+    [WmiMethodId(99), Implemented, read, write, Description("Save Power On Time")]
+    void SavePowerOnTime([in, WmiDataId(0), Description("Yaer")] uint8 Year, [in, WmiDataId(1), Description("Month")] uint8 Month, [in, WmiDataId(2), Description("Day")] uint8 Day, [in, WmiDataId(3), Description("Hour")] uint8 Hour, [in, WmiDataId(4), Description("Minute")] uint8 Minute);
+
+    [WmiMethodId(100), Implemented, read, write, Description("Set Charge Policy")]
+    void SetChargePolicy([in, WmiDataId(0), Description("SetChargePolicyData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(101), Implemented, read, write, Description("Set Charge Stop")]
+    void SetChargeStop([in, WmiDataId(0), Description("SetChargeStopData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(102), Implemented, read, write, Description("Set Current Fan Step")]
+    void SetCurrentFanStep([in, WmiDataId(0), Description("SetCurrentFanStepData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(103), Implemented, read, write, Description("Set 10 Steps Fan Status")]
+    void SetStepFanStatus([in, WmiDataId(0), Description("SetStepFanStatusData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(104), Implemented, read, write, Description("Set Fan Index Value")]
+    void SetFanIndexValue([in, WmiDataId(0), Description("Index")] uint8 Index, [in, WmiDataId(1), Description("Temperature")] uint8 Temperture, [in, WmiDataId(2), Description("Speed")] uint8 Value);
+
+    [WmiMethodId(105), Implemented, read, write, Description("Set VR Mode Status")]
+    void SetVRStatus([in, WmiDataId(0), Description("VRStatusData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(106), Implemented, read, write, Description("Set Fixed Fan Status")]
+    void SetFixedFanStatus([in, WmiDataId(0), Description("FixedFanStatusData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(107), Implemented, read, write, Description("Set Fixed Fan Speed")]
+    void SetFixedFanSpeed([in, WmiDataId(0), Description("FixedFanSpeedData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(112), Implemented, read, write, Description("Set Fan Adjust Status")]
+    void SetFanAdjustStatus([in, WmiDataId(0), Description("AutoFanData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(113), Implemented, read, write, Description("Set Auto Fan Status")]
+    void SetAutoFanStatus([in, WmiDataId(0), Description("AutoFanData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(115), Implemented, read, write, Description("Set Bluetooth LED")]
+    void SetBluetoothLED([in, WmiDataId(0), Description("BluetoothLEDData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(116), Implemented, read, write, Description("SetWiFi LED")]
+    void SetWiFiLED([in, WmiDataId(0), Description("HWiFiLEDData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(117), Implemented, read, write, Description("Turn off fan")]
+    void TurnOffFan([in, WmiDataId(0), Description("TurnOffFanData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(118), Implemented, read, write, Description("Control SLI mode")]
+    void ControlSLIMode([in, WmiDataId(0), Description("ControlSLIData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(119), Implemented, read, write, Description("Notify BIOS power saving mode")]
+    void IsPowerSaving([in, WmiDataId(0), Description("PowerSavingData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(120), Implemented, read, write, Description("Disable Bluetooth function keys")]
+    void DisableBTFnKey([in, WmiDataId(0), Description("BTFnKeyData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(121), Implemented, read, write, Description("Disable Wifi, Bluetooth,3G function keys")]
+    void DisableCommFnKey([in, WmiDataId(0), Description("CommFnKeyData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(122), Implemented, read, write, Description("Setting USB charge under Sleep")]
+    void SetSleepUSBCharge([in, WmiDataId(0), Description("USBCharegData")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(123), Implemented, read, write, Description("Setting USB charge under Hibernation")]
+    void SetHibernationUSBCharge([in, WmiDataId(0), Description("USBCharegData Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(125), Implemented, read, write, Description("Setting Fan Speed")]
+    void SetFanSpeed([in, WmiDataId(0), Description("FanSpeed Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(126), Implemented, read, write, Description("Setting the Camera2 status")]
+    void SetCamera2([in, WmiDataId(0), Description("Camera Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(128), Implemented, read, write, Description("Notify EC Power on time 3 months")]
+    void SetChargeMode([in, WmiDataId(0), Description("Byte Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(129), Implemented, read, write, Description("Setting AI Boost Status")]
+    void SetAIBoostStatus([in, WmiDataId(0), Description("Byte Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(130), Implemented, read, write, Description("Save First Date")]
+    void SaveFirstDate([in, WmiDataId(0), Description("Yaer")] uint8 Year, [in, WmiDataId(1), Description("Month")] uint8 Month, [in, WmiDataId(2), Description("Day")] uint8 Day, [in, WmiDataId(3), Description("Hour")] uint8 Hour, [in, WmiDataId(4), Description("Minute")] uint8 Minute);
+
+    [WmiMethodId(131), Implemented, read, write, Description("SET RGB LED")]
+    void SetRGBLed([in, WmiDataId(0), Description("Area")] uint8 Area, [in, WmiDataId(1), Description("Mode")] uint8 Mode, [in, WmiDataId(2), Description("Brightness")] uint8 Brightness, [in, WmiDataId(3), Description("Red")] uint8 Red, [in, WmiDataId(4), Description("Green")] uint8 Green, [in, WmiDataId(5), Description("Blue")] uint8 Blue);
+
+    [WmiMethodId(132), Implemented, read, write, Description("Setting Ec Value Boost Status")]
+    void SetEcValueBoostStatus([in, WmiDataId(0), Description("Byte Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(133), Implemented, read, write, Description("Set Whisper Mode")]
+    void SetWhisperMode([in, WmiDataId(0), Description("Byte Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(192), Implemented, read, write, Description("Setting the brightness")]
+    void SetBrightness([in, WmiDataId(0), Description("Brightness Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(193), Implemented, read, write, Description("Setting the Bluetooth status")]
+    void SetBluetooth([in, WmiDataId(0), Description("Bluetooth Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(194), Implemented, read, write, Description("Setting the WiFi status")]
+    void SetWiFi([in, WmiDataId(0), Description("Wifi Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(195), Implemented, read, write, Description("Setting the W35G status")]
+    void SetW35G([in, WmiDataId(0), Description("W35G Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(196), Implemented, read, write, Description("Setting the Brightness Off status")]
+    void SetBrightnessOff([in, WmiDataId(0), Description("WiMax Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(197), Implemented, read, write, Description("Setting the Camera status")]
+    void SetCamera([in, WmiDataId(0), Description("Camera Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(199), Implemented, read, write, Description("Setting the mute status")]
+    void WMISetMuteStatus([in, WmiDataId(0), Description("Mute Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(202), Implemented, read, write, Description("Setting the TouchPad status")]
+    void SetTouchPad([in, WmiDataId(0), Description("TouchPad Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(203), Implemented, read, write, Description("Block the Winkey")]
+    void BlockWinkey([in, WmiDataId(0), Description("Winkey Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(204), Implemented, read, write, Description("Decrease Brightness")]
+    void DecreaseBrigtness([in, WmiDataId(0), Description("Brightness Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(205), Implemented, read, write, Description("Increase Brightness")]
+    void IncreaseBrightness([in, WmiDataId(0), Description("Brightness Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(206), Implemented, read, write, Description("Setting the Turbo Mode status")]
+    void SetTurboMode([in, WmiDataId(0), Description("Turbo Mode Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(207), Implemented, read, write, Description("Notify now in Windows")]
+    void NotifyInWindows([in, WmiDataId(0), Description("In Windows Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(208), Implemented, read, write, Description("Setting the Smart Charge status")]
+    void SetSmartCharge([in, WmiDataId(0), Description("Smart Charge Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(212), Implemented, read, write, Description("Setting the USB3.0 status")]
+    void SetUSB30([in, WmiDataId(0), Description("USB3.0 Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(216), Implemented, read, write, Description("Setting the Touch Screen status")]
+    void SetTouchScreen([in, WmiDataId(0), Description("TouchScreen Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(220), Implemented, read, write, Description("Setting the Smart Turbo level")]
+    void SetSmartTurbo([in, WmiDataId(0), Description("Smart Turbo Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(240), Implemented, read, write, Description("Setting the KeyboardMatrix status")]
+    void SetKeyboardMatrix([in, WmiDataId(0), Description("Keyboard Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(242), Implemented, read, write, Description("Enable/Disable Smart Turbo")]
+    void SmartTurboControl([in, WmiDataId(0), Description("Smart Turbo Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(243), Implemented, read, write, Description("Enable/Disable G-Sensor")]
+    void SetGSensorStatus([in, WmiDataId(0), Description("G-Sensor Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(244), Implemented, read, write, Description("Enable/Disable Onboard LAN")]
+    void SetOnboardLANStatus([in, WmiDataId(0), Description("Onboard LAN Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(245), Implemented, read, write, Description("Notify BIOS HDMI Connect Status")]
+    void NotifyHDMIStatus([in, WmiDataId(0), Description("HDMI Connect Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(246), Implemented, read, write, Description("Set Keyboard Back Light Level")]
+    void SetKeyBoardBackLight([in, WmiDataId(0), Description("KeyBoard Back Light Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(250), Implemented, read, write, Description("Set Smart Cooling Status")]
+    void SetSmartCool([in, WmiDataId(0), Description("Smart Cool Setting Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(253), Implemented, read, write, Description("Set Rotation Lock State")]
+    void ToggleRotationLock([in, WmiDataId(0), Description("Set Rotation Lock State Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(254), Implemented, read, write, Description("Notify EC 3G device")]
+    void NotifyEC3GDevice([in, WmiDataId(0), Description("Notify EC 3G device Data")] uint8 Data, [out, WmiDataId(1), Description("Data")] uint8 DataOut);
+
+    [WmiMethodId(230), Implemented, read, write, Description("Set PEG2 or SG2")]
+    void SetPEG2orSG2([in, WmiDataId(0), Description("Data")] uint8 Data);
+
+    [WmiMethodId(231), Implemented, read, write, Description("Set DynamicBoost Status")]
+    void SetDynamicBoostStatus([in, WmiDataId(0), Description("Data")] uint8 Data);
+};
+
+[dynamic, provider("WmiProv"), WMI, guid("{ABBC0F6C-8EA1-11d1-00A0-C90629100000}"),
+ Description("Class to test Query/Set Gigabyte WMI ACPI")]
+class GB_WMIACPI_Data
+{
+    [read] boolean Active;
+    [read, write, WmiDataId(1), Description("Read A ULONG value")] uint32 Data;
+    [key, read] string InstanceName;
+};
+
+[dynamic, provider("WmiProv"), WMI, guid("{ABBC0F72-8EA1-11d1-00A0-C90629100000}"),
+ Description("Class containing event generated ULong data")]
+class GB_WMIACPI_Event : WMIEvent
+{
+    [read] boolean Active;
+    [read, write, WmiDataId(1), MAX(4), Description("WMI Event Data")] uint8 Data[];
+    [key, read] string InstanceName;
+};
+
+[Description("Written by OpenAorus when it registered the classes above. Its presence is how a later run tells our registration apart from a vendor one, and the fingerprint is the same string recomputed from the live classes.")]
+class OpenAorus_SchemaMarker
+{
+    [key] string Id;
+    string Fingerprint;
+};
+
+instance of OpenAorus_SchemaMarker
+{
+    Id = "OpenAorus";
+    Fingerprint = "482f5601e0bed6ba4f417c4dae11e44fe69638b81aa81ed572bc2a24d0fda93d";
+};

@@ -1,0 +1,4 @@
+# MofDriftTests compares the checked-in .mof against MofWriter's output byte for byte, and
+# MofWriter writes \r\n. Without this, a clone with core.autocrlf off checks the files out with
+# \n and the drift test fails for a reason that has nothing to do with the schema.
+*.mof text eol=crlf
