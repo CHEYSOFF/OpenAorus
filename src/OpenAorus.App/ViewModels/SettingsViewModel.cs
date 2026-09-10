@@ -15,18 +15,36 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _pollHiddenMs;
     [ObservableProperty] private string _message = "";
 
-    public bool CanWrite => _s.Profile.CanWrite;
+    /// <summary>Whether this machine may be written to at all.</summary>
+    /// <remarks>Two conditions, and both have to hold. The model has to be one whose duty scale
+    /// the app knows, and the WMI schema has to have been registered and proved - registering
+    /// alone unlocks nothing. See <see cref="OpenAorus.Hardware.Wmi.Schema.SchemaState"/>.</remarks>
+    public bool CanWrite => _s.Profile.CanWrite && _s.Schema.WritesUnlocked;
 
     public string SettingsPath => _s.Store.Path;
 
-    /// <summary>The Fn hotkey card, which is the one part of this dialog outside
-    /// <see cref="CanWrite"/> - see <see cref="HotkeysViewModel"/> for why.</summary>
+    /// <summary>The Fn hotkey card, which is outside <see cref="CanWrite"/> - see
+    /// <see cref="HotkeysViewModel"/> for why.</summary>
     public HotkeysViewModel Hotkeys { get; }
 
-    public SettingsViewModel(AppServices s)
+    /// <summary>The WMI schema card, which is outside <see cref="CanWrite"/> too.</summary>
+    /// <remarks>For a sharper reason than the hotkey card's: this is the card that fixes the
+    /// condition disabling the rest of the dialog, and greying it out would leave the owner in a
+    /// modal dialog whose only working control is the one that cannot help them.</remarks>
+    public SchemaViewModel Schema { get; }
+
+    /// <param name="s">The app's services.</param>
+    /// <param name="writesChanged">Called when the schema card moves the machine, so the window
+    /// behind this dialog re-reads its own <c>CanWrite</c> without a restart.</param>
+    public SettingsViewModel(AppServices s, Action? writesChanged = null)
     {
         _s = s;
         Hotkeys = new HotkeysViewModel(s, text => Message = text);
+        Schema = new SchemaViewModel(s, () =>
+        {
+            OnPropertyChanged(nameof(CanWrite));
+            writesChanged?.Invoke();
+        });
         _pollVisibleMs = s.Settings.PollIntervalVisibleMs;
         _pollHiddenMs = s.Settings.PollIntervalHiddenMs;
         _gccTakenOver = s.Settings.Takeover is not null;
@@ -36,6 +54,10 @@ public partial class SettingsViewModel : ObservableObject
     {
         StartWithWindows = await Task.Run(StartupTask.IsEnabled);
         GccActive = await Task.Run(() => GccTakeover.IsGccActive(_s.Gcc));
+        // Re-read on every open, for the reason the two lines above are: what is on the machine
+        // can have changed since the app started, and a card offering an action the machine is no
+        // longer entitled to is a button that refuses after it has been pressed.
+        await Schema.RefreshAsync();
         _s.Settings.StartWithWindows = StartWithWindows;
         if (GccTakenOver && GccActive)
             Message = "Gigabyte Control Center is running again (an update may have re-enabled it). Toggle takeover off and on to re-park it.";

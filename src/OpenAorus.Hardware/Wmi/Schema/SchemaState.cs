@@ -344,6 +344,35 @@ public static class SchemaState
         _ => throw Unknown(status),
     };
 
+    /// <summary>What a refused fan or battery write says.</summary>
+    /// <param name="what">What is switched off, e.g. <c>fan control</c>.</param>
+    /// <returns>Owner-facing prose naming the cause and where the fix is.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="what"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// The two controllers hold a <c>bool</c> and not a state, so this cannot name which of the
+    /// five locked states a machine is in - <see cref="Explain"/> does that, in the window. What it
+    /// must do is name a cause instead of a symptom. The message it replaces was "step 1/5
+    /// setCurrentFanStep failed: not found", which said "method" when the whole class was missing,
+    /// arrived one step into a five-step sequence, and left the app looking broken rather than
+    /// unconfigured.
+    /// </para>
+    /// <para>
+    /// It says OpenAorus has not registered and proved the interface, rather than that nothing is
+    /// registered at all, because <see cref="SchemaStatus.Foreign"/> is a locked state on a machine
+    /// where the classes are present - Control Center's - and telling that owner nothing is
+    /// registered would send them looking for a fault that is not there.
+    /// </para>
+    /// </remarks>
+    public static string LockedRefusal(string what)
+    {
+        ArgumentNullException.ThrowIfNull(what);
+
+        return "OpenAorus has not registered and proved the Gigabyte WMI interface on this " +
+               $"machine, so {what} is switched off. Settings says what state the registration is " +
+               "in and offers whatever can be done about it.";
+    }
+
     /// <summary>
     /// Thrown rather than defaulted, so that a seventh state has to be answered for at every one of
     /// these four sites instead of quietly reading as "no" at three of them and blank at the fourth.

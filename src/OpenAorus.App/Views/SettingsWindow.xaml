@@ -84,6 +84,87 @@
              message about a card that works, greyed out because a different card does not, would
              be the gate reaching this one by the back door. -->
         <StackPanel Margin="16,0,16,14">
+            <!-- Outside the CanWrite panel, and a sibling of it rather than a child, for a sharper
+                 reason than the hotkey card below: this is the card that fixes the condition
+                 disabling everything above it, and greying it out would leave the owner in a modal
+                 dialog whose only working control is the one that cannot help them.
+                 SchemaSettingsUiTests pins the arrangement, because "outside the gate" is a fact
+                 about where the markup sits and nothing in it says so. -->
+            <Border Style="{StaticResource CardStyle}" DataContext="{Binding Schema}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Gigabyte WMI interface"/>
+                    <TextBlock Style="{StaticResource Body}" TextWrapping="Wrap"
+                               Text="Fan and battery control go through an interface description that Gigabyte Control Center used to install, and that uninstalling Control Center takes away with it. OpenAorus can register its own copy. It needs administrator rights, and Remove puts the machine back exactly as it was."/>
+
+                    <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Text="{Binding StatusText}"/>
+
+                    <TextBlock Text="OpenAorus is not running as administrator, so it can neither register nor remove anything."
+                               Foreground="{StaticResource Warn}" TextWrapping="Wrap" Margin="0,6,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding NeedsElevation}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- Each button is shown only where the state machine permits that action:
+                         never Install over a registration somebody else made, never Remove of
+                         classes carrying Gigabyte's names, and never a hardware check against a
+                         registration that is not ours. Registering and proving are two separate
+                         things, so what is offered after a successful install is "Check it works"
+                         rather than another Install. -->
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="Register the interface" Margin="0,0,8,0"
+                                Command="{Binding InstallCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanInstall}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Check it works" Margin="0,0,8,0"
+                                Command="{Binding RunGatesCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanRunGates}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Remove" Command="{Binding RemoveCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanRemove}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource Body}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Foreground="{StaticResource Fg}" Text="{Binding Message}"/>
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource CardStyle}" DataContext="{Binding Hotkeys}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource CardTitle}" Text="Fn hotkeys"/>

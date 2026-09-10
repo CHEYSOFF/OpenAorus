@@ -15,7 +15,14 @@ public partial class BatteryViewModel : ObservableObject
     [ObservableProperty] private int _cycleCount;
     [ObservableProperty] private string _statusText = "";
 
-    public bool CanWrite => _s.Profile.CanWrite;
+    /// <summary>Whether the charge limit may be written. The model gate and the schema gate.</summary>
+    public bool CanWrite => _s.Profile.CanWrite && _s.Schema.WritesUnlocked;
+
+    /// <summary>Re-reads <see cref="CanWrite"/> after the schema card has changed the machine.</summary>
+    /// <remarks>Pushed rather than polled: the card is in a dialog on top of this window, and the
+    /// owner who has just pressed Check it works must not have to restart the app to reach the
+    /// charge limit.</remarks>
+    public void NoteWritesChanged() => OnPropertyChanged(nameof(CanWrite));
 
     public BatteryViewModel(AppServices s, Action<BannerKind, string> banner)
     {

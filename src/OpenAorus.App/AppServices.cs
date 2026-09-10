@@ -11,6 +11,7 @@ using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Sensors;
 using OpenAorus.Hardware.Platform;
 using OpenAorus.Hardware.Wmi;
+using OpenAorus.Hardware.Wmi.Schema;
 
 namespace OpenAorus.App;
 
@@ -25,6 +26,22 @@ public sealed class AppServices
     public required AppSettings Settings { get; init; }
     public required IGccSystem Gcc { get; init; }
     public required LightingController Lighting { get; init; }
+
+    /// <summary>What is registered on this machine, and whether writes are allowed through it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Defaulted rather than required, and to a service over no machine at all: every construction
+    /// site written before the schema feature keeps its unlocked, silent behaviour, and
+    /// <see cref="Create"/> always replaces it with the live one. See
+    /// <see cref="SchemaService.Unrestricted"/>.
+    /// </para>
+    /// <para>
+    /// <see cref="Fans"/> and <see cref="Battery"/> are constructed against it, so a locked machine
+    /// refuses a write inside the controller rather than at the window - which is the only place a
+    /// refusal reaches <c>--apply</c> as well.
+    /// </para>
+    /// </remarks>
+    public SchemaService Schema { get; init; } = SchemaService.Unrestricted;
 
     /// <summary>Whether a supported lighting collection was found. False hides the lighting UI
     /// and makes every lighting call a no-op; nothing else about the app changes.</summary>
@@ -79,9 +96,17 @@ public sealed class AppServices
         // that told half the story about a keyboard that is only half working.
         var trace = new HotkeyTrace();
 
+        // One look at the repository, before anything is offered or written. It reads class
+        // metadata and our own marker instance - no firmware method is invoked - so --dump and
+        // --apply pay one cheap WMI connection for it and get, in exchange, a refusal that names
+        // the cause instead of a write that fails one step into a five-step sequence.
+        var schema = new SchemaService(new WindowsSchemaSystem(), settings.Schema, SchemaMof.Fingerprint);
+
         // Built here rather than in the initializer because the hotkey cursor has to be hung off
-        // this exact controller - the one every mode change in the app goes through.
-        var fans = new FanController(wmi, profile);
+        // this exact controller - the one every mode change in the app goes through. The gate is
+        // read through the service at every apply, so pressing Install and then Check it works
+        // brings the fan buttons alive without a restart.
+        var fans = new FanController(wmi, profile, writesUnlocked: () => schema.WritesUnlocked);
 
         return new AppServices
         {
@@ -97,9 +122,10 @@ public sealed class AppServices
             Wmi = wmi,
             Fans = fans,
             Sensors = new SensorReader(wmi, profile),
-            Battery = new BatteryController(wmi),
+            Battery = new BatteryController(wmi, () => schema.WritesUnlocked),
             Store = store,
             Settings = settings,
+            Schema = schema,
             Gcc = new WindowsGccSystem(),
             Lighting = new LightingController(keyboard, layout),
             KeyboardPresent = keyboard.IsPresent,
@@ -194,12 +220,20 @@ public sealed class AppServices
     {
         var errors = new List<string>();
 
-        if (Profile.CanWrite)
+        if (Profile.CanWrite && Schema.WritesUnlocked)
         {
             var fans = await Fans.ApplyAsync(Settings.Mode, Settings.FixedPercent, Settings.ToCurve());
             var battery = Battery.SetLimit(Settings.ChargeLimitEnabled, Settings.ChargeStopPercent);
             if (!fans.Success) errors.Add($"fan mode: {fans.Error}");
             if (!battery.Success) errors.Add($"charge limit: {battery.Error}");
+        }
+        else if (Profile.CanWrite)
+        {
+            // Said once, in the words the state machine uses, rather than twice over from two
+            // controllers refusing with the same sentence. Nothing is attempted, which is the
+            // whole point: --apply on a locked machine exits naming the cause instead of failing
+            // one step into a five-step write with nobody there to read it.
+            errors.Add(Schema.Report.Explanation);
         }
         else
         {

@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.IO;
+using System.Text;
 
 namespace OpenAorus.Hardware.Wmi.Schema;
 
@@ -59,6 +61,25 @@ public static class KnownGoodReading
     private const string FanTableHeader = "Fan table";
 
     private enum Block { None, Methods, FanTable }
+
+    /// <summary>The checked-in dump, as it is embedded in this assembly.</summary>
+    private const string ReferenceResource =
+        "OpenAorus.Hardware.Wmi.Schema.dump-aorus-17g-kd-known-good.txt";
+
+    private static readonly Lazy<GateReadings> s_reference = new(() => Parse(ReadEmbedded()));
+
+    /// <summary>
+    /// The reading Gate A compares a fresh registration against, read out of this assembly.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The dump is not embedded in this assembly.</exception>
+    /// <exception cref="FormatException">The embedded dump holds no method readings.</exception>
+    /// <remarks>
+    /// Embedded rather than shipped beside the exe, because the app publishes as a single file and
+    /// the gate runs on the owner's laptop rather than in a test. It is parsed once: Gate A is
+    /// something the owner presses a button for, not something on a poll loop, but the reference is
+    /// 72 methods and 15 slots and there is no reason to re-read it per press.
+    /// </remarks>
+    public static GateReadings Reference => s_reference.Value;
 
     /// <summary>Reads a diagnostics dump into the shape Gate A compares.</summary>
     /// <param name="dumpText">The whole dump, as rendered by
@@ -170,6 +191,21 @@ public static class KnownGoodReading
                 values[token[..equals]] = value;
         }
         return values;
+    }
+
+    /// <summary>Reads the embedded dump out of this assembly.</summary>
+    /// <remarks>A missing resource is a build that shipped without the thing Gate A judges
+    /// against, and a gate with nothing to compare would pass every registration. It throws rather
+    /// than returning an empty reading for exactly that reason - see <see cref="Parse"/>.</remarks>
+    private static string ReadEmbedded()
+    {
+        using var stream = typeof(KnownGoodReading).Assembly.GetManifestResourceStream(ReferenceResource)
+            ?? throw new InvalidOperationException(
+                $"The known-good reading '{ReferenceResource}' is not embedded in this assembly. " +
+                "Gate A has nothing to judge a registration against without it.");
+
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     private static readonly IReadOnlyDictionary<string, int> Empty =

@@ -56,7 +56,15 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isWindowVisible;
     [ObservableProperty] private AppSection _selectedSection;
 
-    public bool CanWrite => _s.Profile.CanWrite;
+    /// <summary>Whether anything in this window may be written to the controller.</summary>
+    /// <remarks>
+    /// Two conditions, and both have to hold. The model has to be one whose duty scale the app
+    /// knows, and the Gigabyte WMI schema has to have been registered <em>and</em> proved by both
+    /// hardware gates - registering alone unlocks nothing. The fan strip, the curve editor, the
+    /// battery card and the top half of the Settings window all read this, so they disable
+    /// together rather than one at a time as each write fails.
+    /// </remarks>
+    public bool CanWrite => _s.Profile.CanWrite && _s.Schema.WritesUnlocked;
 
     /// <summary>Whether a mode press would be acted on right now.</summary>
     /// <remarks>
@@ -100,7 +108,7 @@ public partial class MainViewModel : ObservableObject
         Curve = new CurveEditorViewModel(_s.Settings.Curve);
         Battery = new BatteryViewModel(_s, SetBanner);
         Lighting = new LightingViewModel(_s, SetBanner);
-        SettingsVm = new SettingsViewModel(_s);
+        SettingsVm = new SettingsViewModel(_s, OnSchemaChanged);
 
         _bannerState = new BannerState(_s.Profile);
         SyncBanner();
@@ -146,6 +154,38 @@ public partial class MainViewModel : ObservableObject
             _bannerState.ReportOverrideNotice(BannerKind.Warning, string.Join(" ", parts));
             SyncBanner();
         }
+        else if (!_s.Schema.WritesUnlocked)
+        {
+            // THE NOTICE THIS RELEASE EXISTS FOR. A machine whose Gigabyte WMI schema went with
+            // Control Center's uninstaller used to say nothing at all until the first write failed
+            // - "step 1/5 setCurrentFanStep failed: not found", one step into a sequence, naming a
+            // method when the whole class was missing. It is said here instead: at startup, once,
+            // in the state machine's own words, which name what is wrong, what it means and that
+            // Settings has the button.
+            //
+            // Routed through ReportOverrideNotice for the reason the two settings notices above
+            // are: this is not a per-model condition, so an owner on an unrecognised model - whose
+            // banner is otherwise permanent - has to hear it too.
+            //
+            // An "else", because those two notices already say that writes are locked and why, and
+            // an override notice raised twice in one constructor would only be the second one.
+            _bannerState.ReportOverrideNotice(BannerKind.Warning, _s.Schema.Report.Explanation);
+            SyncBanner();
+        }
+    }
+
+    /// <summary>
+    /// Re-reads everything gated on the schema, after the Settings card has changed the machine.
+    /// </summary>
+    /// <remarks>Pushed from the card rather than polled, because the state only moves when the
+    /// owner presses something - and when they do, the fan strip has to come alive without a
+    /// restart. <see cref="SettingsViewModel"/> re-raises its own <c>CanWrite</c> before calling
+    /// this.</remarks>
+    private void OnSchemaChanged()
+    {
+        OnPropertyChanged(nameof(CanWrite));
+        OnPropertyChanged(nameof(CanChangeMode));
+        Battery.NoteWritesChanged();
     }
 
     public async Task InitializeAsync()

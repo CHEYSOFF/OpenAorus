@@ -1,5 +1,6 @@
 using OpenAorus.Hardware.Profiles;
 using OpenAorus.Hardware.Wmi;
+using OpenAorus.Hardware.Wmi.Schema;
 
 namespace OpenAorus.Hardware.Fans;
 
@@ -14,6 +15,7 @@ public sealed class FanController
     private readonly IGigabyteWmi _wmi;
     private readonly ModelProfile _profile;
     private readonly Func<int, Task> _delay;
+    private readonly Func<bool> _writesUnlocked;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public FanMode? LastApplied { get; private set; }
@@ -25,11 +27,27 @@ public sealed class FanController
     /// where the next caller added would be the one that forgot.</remarks>
     public event Action<FanMode>? Applied;
 
-    public FanController(IGigabyteWmi wmi, ModelProfile profile, Func<int, Task>? delay = null)
+    /// <param name="wmi">The only door to the embedded controller.</param>
+    /// <param name="profile">The detected model.</param>
+    /// <param name="delay">How the pause between two writes is taken; null for a real one.</param>
+    /// <param name="writesUnlocked">Whether the WMI schema has been registered and proved, read at
+    /// every apply rather than captured. Null leaves the gate open, so every construction site that
+    /// predates the schema feature is unchanged.</param>
+    /// <remarks>
+    /// A <see cref="Func{T}"/> and not a <c>bool</c> because the answer moves while the app runs:
+    /// the owner presses Install, then Check it works, and the fan buttons have to come alive
+    /// without a restart.
+    /// </remarks>
+    public FanController(
+        IGigabyteWmi wmi,
+        ModelProfile profile,
+        Func<int, Task>? delay = null,
+        Func<bool>? writesUnlocked = null)
     {
         _wmi = wmi;
         _profile = profile;
         _delay = delay ?? (ms => Task.Delay(ms));
+        _writesUnlocked = writesUnlocked ?? (() => true);
     }
 
     private sealed record Step(string Method, IReadOnlyDictionary<string, object> Args)
@@ -48,6 +66,14 @@ public sealed class FanController
     {
         if (!_profile.CanWrite)
             return WmiResult.Fail($"Model '{_profile.Name}' is not recognised as a Gigabyte laptop; fan control is disabled.");
+
+        // One line below the model gate, and here rather than at the mode buttons for the reason
+        // the fan floors are: every caller passes through this method, and a caller added later
+        // cannot forget it. The path that needs it most has no window at all - --apply runs from a
+        // scheduled task, and on an unregistered machine it produced "step 1/5 setCurrentFanStep
+        // failed: not found" with nobody there to read it.
+        if (!_writesUnlocked())
+            return WmiResult.Fail(SchemaState.LockedRefusal("fan control"));
 
         List<Step> steps;
         try { steps = Build(mode, fixedPercent, curve ?? FanCurve.Default); }

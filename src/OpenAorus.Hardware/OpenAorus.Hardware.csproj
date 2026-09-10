@@ -19,4 +19,12 @@
     <EmbeddedResource Include="Wmi\Schema\GB_WMIACPI-remove.mof" LogicalName="OpenAorus.Hardware.Wmi.Schema.GB_WMIACPI-remove.mof" />
   </ItemGroup>
 
+  <!-- Gate A judges a fresh registration against a reading this machine has already produced, so
+       the reference has to reach the owner's laptop and not only the test run. It travels inside
+       the assembly for the same reason the MOFs do: the app publishes as a single file. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\docs\research\dump-aorus-17g-kd-known-good.txt"
+                      LogicalName="OpenAorus.Hardware.Wmi.Schema.dump-aorus-17g-kd-known-good.txt" />
+  </ItemGroup>
+
 </Project>

@@ -91,4 +91,32 @@ public class KnownGoodReadingTests
         Assert.Throws<FormatException>(() => KnownGoodReading.Parse("nothing here"));
         Assert.Throws<ArgumentNullException>(() => KnownGoodReading.Parse(null!));
     }
+
+    /// <summary>
+    /// The copy the owner's laptop judges a registration against is the file in this repository.
+    /// </summary>
+    /// <remarks>Gate A runs on the owner's machine, out of a single-file publish, so the reference
+    /// travels inside the assembly. A build that embedded a stale copy - or none - would have the
+    /// gate judging a registration against something nobody reviewed, which is the one thing a
+    /// gate is not allowed to do quietly.</remarks>
+    [Fact]
+    public void The_embedded_reference_is_the_file_checked_in_beside_it()
+    {
+        var embedded = KnownGoodReading.Reference;
+        var onDisk = Reference();
+
+        // Compared field by field: MethodReading carries a dictionary, and a record holding one
+        // compares it by reference, so two identical readings are never Equal to each other.
+        Assert.Equal(onDisk.Methods.Count, embedded.Methods.Count);
+        for (var i = 0; i < onDisk.Methods.Count; i++)
+        {
+            Assert.Equal(onDisk.Methods[i].Method, embedded.Methods[i].Method);
+            Assert.Equal(onDisk.Methods[i].Answered, embedded.Methods[i].Answered);
+            Assert.Equal(
+                onDisk.Methods[i].Values.OrderBy(kv => kv.Key, StringComparer.Ordinal),
+                embedded.Methods[i].Values.OrderBy(kv => kv.Key, StringComparer.Ordinal));
+        }
+
+        Assert.Equal(onDisk.FanTable, embedded.FanTable);
+    }
 }

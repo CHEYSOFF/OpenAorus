@@ -1,4 +1,5 @@
 using OpenAorus.Hardware.Wmi;
+using OpenAorus.Hardware.Wmi.Schema;
 
 namespace OpenAorus.Hardware.Battery;
 
@@ -13,11 +14,31 @@ public sealed class BatteryController
     public const int MaxStop = 100;
 
     private readonly IGigabyteWmi _wmi;
+    private readonly Func<bool> _writesUnlocked;
 
-    public BatteryController(IGigabyteWmi wmi) => _wmi = wmi;
+    /// <param name="wmi">The only door to the embedded controller.</param>
+    /// <param name="writesUnlocked">Whether the WMI schema has been registered and proved, read at
+    /// every write rather than captured. Null leaves the gate open, so every construction site that
+    /// predates the schema feature is unchanged.</param>
+    public BatteryController(IGigabyteWmi wmi, Func<bool>? writesUnlocked = null)
+    {
+        _wmi = wmi;
+        _writesUnlocked = writesUnlocked ?? (() => true);
+    }
 
+    /// <summary>Writes the charge policy and the stop percentage.</summary>
+    /// <param name="enabled">Whether the custom stop is in force.</param>
+    /// <param name="stopPercent">Where to stop charging, clamped to
+    /// <see cref="MinStop"/>..<see cref="MaxStop"/>.</param>
+    /// <returns>What the controller said, or a refusal if writes are locked.</returns>
     public WmiResult SetLimit(bool enabled, int stopPercent)
     {
+        // Here rather than at the battery card, for the reason the fan gate is in FanController:
+        // ApplySavedAsync writes the saved charge limit at every startup and at every resume, and
+        // --apply does it with no window in the process at all.
+        if (!_writesUnlocked())
+            return WmiResult.Fail(SchemaState.LockedRefusal("the battery charge limit"));
+
         var policy = enabled ? PolicyCustom : PolicyStandard;
         var stop = enabled ? (byte)Math.Clamp(stopPercent, MinStop, MaxStop) : (byte)MaxStop;
 
