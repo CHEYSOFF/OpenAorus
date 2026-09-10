@@ -27,7 +27,8 @@ public sealed class SettingsStore
     /// <see cref="AppSettings.RepairFans"/> and <see cref="HotkeySettings.Repair"/>.
     /// The rest of the file survives, so this is a milder notice than <see cref="LastLoadWasReset"/>,
     /// but the owner still had settings changed under them and is told for the same reason.</summary>
-    public bool LastLoadRepaired => LastLoadLightingRepaired || LastLoadFansRepaired || LastLoadHotkeysRepaired;
+    public bool LastLoadRepaired =>
+        LastLoadLightingRepaired || LastLoadFansRepaired || LastLoadHotkeysRepaired || LastLoadSchemaRepaired;
 
     /// <summary>The lighting half of <see cref="LastLoadRepaired"/>. Split out so the notice can
     /// name what actually changed instead of blaming lighting for a fan repair.</summary>
@@ -43,6 +44,14 @@ public sealed class SettingsStore
     /// brought back inside it.</summary>
     public bool LastLoadHotkeysRepaired { get; private set; }
 
+    /// <summary>The schema half of <see cref="LastLoadRepaired"/>: a recorded hardware-gate pass
+    /// that this app could not have written - see <see cref="SchemaRecord.Repair"/> - cleared, so
+    /// that fan and battery writes stay locked until the gates are run again.</summary>
+    /// <remarks>Milder than the others in what it changes and sharper in what it means. The other
+    /// three repair a value the owner chose; this one removes a claim that the firmware is safe to
+    /// write to, which a settings file is not allowed to make on its own.</remarks>
+    public bool LastLoadSchemaRepaired { get; private set; }
+
     public SettingsStore(string path) => Path = path;
 
     public AppSettings Load()
@@ -51,6 +60,7 @@ public sealed class SettingsStore
         LastLoadLightingRepaired = false;
         LastLoadFansRepaired = false;
         LastLoadHotkeysRepaired = false;
+        LastLoadSchemaRepaired = false;
         if (!File.Exists(Path)) return new AppSettings();
         try
         {
@@ -62,6 +72,7 @@ public sealed class SettingsStore
             LastLoadLightingRepaired = settings.Lighting.Repair();
             LastLoadFansRepaired = settings.RepairFans();
             LastLoadHotkeysRepaired = settings.Hotkeys.Repair();
+            LastLoadSchemaRepaired = settings.Schema.Repair();
             return settings;
         }
         catch (Exception)

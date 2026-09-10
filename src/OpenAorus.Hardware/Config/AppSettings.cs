@@ -6,6 +6,7 @@ public sealed class AppSettings
 {
     private LightingSettings _lighting = new();
     private HotkeySettings _hotkeys = new();
+    private SchemaRecord _schema = new();
     private List<FanCurvePoint> _curve = FanCurve.Default.Points.ToList();
 
     public FanMode Mode { get; set; } = FanMode.Normal;
@@ -41,6 +42,16 @@ public sealed class AppSettings
     {
         get => _hotkeys;
         set => _hotkeys = value ?? new HotkeySettings();
+    }
+
+    /// <summary>What was done to the WMI schema and what the hardware gates proved about it. Never
+    /// null: a file written with <c>"Schema": null</c>, or one from before the gates existed that
+    /// has no schema section at all, still loads with a record that claims nothing - which is the
+    /// right default, since claiming nothing is what keeps writes locked.</summary>
+    public SchemaRecord Schema
+    {
+        get => _schema;
+        set => _schema = value ?? new SchemaRecord();
     }
 
     public FanCurve ToCurve() => new(Curve);

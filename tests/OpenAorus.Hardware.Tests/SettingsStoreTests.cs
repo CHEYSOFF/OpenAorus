@@ -104,4 +104,57 @@ public class SettingsStoreTests : IDisposable
         System.IO.File.WriteAllText(File, "{ \"Mode\": \"Quiet\", \"Future\": 1 }");
         Assert.Equal(FanMode.Quiet, new SettingsStore(File).Load().Mode);
     }
+
+    [Fact]
+    public void A_hand_edited_gate_pass_is_repaired_away_on_load()
+    {
+        // A settings file is a text file anyone can edit, and the gate record is the thing that
+        // unlocks writing to the firmware. It is repaired at the one choke point every other
+        // section is repaired at, so there is no second way in.
+        Directory.CreateDirectory(_dir);
+        System.IO.File.WriteAllText(File, "{ \"Schema\": { \"GatesPassed\": true } }");
+        var store = new SettingsStore(File);
+
+        var s = store.Load();
+
+        Assert.False(s.Schema.GatesPassed);
+        Assert.True(store.LastLoadSchemaRepaired);
+        Assert.True(store.LastLoadRepaired);
+    }
+
+    [Fact]
+    public void A_recorded_gate_pass_survives_a_round_trip_untouched()
+    {
+        var store = new SettingsStore(File);
+        var s = store.Load();
+        s.Schema.Registered = true;
+        s.Schema.GatesPassed = true;
+        s.Schema.Fingerprint = "aaa";
+        s.Schema.When = DateTime.Now;
+        s.Schema.GateSummary = "Gate A: passed, 69 methods compared, 0 warnings";
+        store.Save(s);
+
+        var reloaded = new SettingsStore(File);
+        var back = reloaded.Load();
+
+        Assert.True(back.Schema.GatesPassed);
+        Assert.Equal("aaa", back.Schema.Fingerprint);
+        Assert.Equal(s.Schema.GateSummary, back.Schema.GateSummary);
+        Assert.False(reloaded.LastLoadSchemaRepaired);
+        Assert.False(reloaded.LastLoadRepaired);
+    }
+
+    [Fact]
+    public void A_file_from_before_the_gates_existed_has_a_record_that_claims_nothing()
+    {
+        Directory.CreateDirectory(_dir);
+        System.IO.File.WriteAllText(File, "{ \"Mode\": \"Quiet\" }");
+        var store = new SettingsStore(File);
+
+        var s = store.Load();
+
+        Assert.NotNull(s.Schema);
+        Assert.False(s.Schema.GatesPassed);
+        Assert.False(store.LastLoadSchemaRepaired);
+    }
 }

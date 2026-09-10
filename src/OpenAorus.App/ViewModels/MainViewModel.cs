@@ -133,6 +133,14 @@ public partial class MainViewModel : ObservableObject
                 parts.Add("A saved hotkey overlay duration was outside the range the app accepts and has been " +
                           $"brought back inside {HotkeySettings.MinOverlaySeconds}-" +
                           $"{HotkeySettings.MaxOverlaySeconds} seconds.");
+            if (_s.Store.LastLoadSchemaRepaired)
+                // Named like the rest, and for the same reason: an owner who reads "settings were
+                // repaired" and then finds fan control switched off deserves to be told which half
+                // did it. This one is the only half whose repair changes what the app will do to
+                // the hardware.
+                parts.Add("The saved record of the hardware checks recorded a pass this app could not have " +
+                          "written, so it has been cleared. Fan and battery writes stay locked until the " +
+                          "read check and the charge-limit round trip are run again.");
             parts.Add("Everything else in your settings was kept.");
 
             _bannerState.ReportOverrideNotice(BannerKind.Warning, string.Join(" ", parts));

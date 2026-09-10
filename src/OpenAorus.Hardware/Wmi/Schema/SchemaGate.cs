@@ -12,11 +12,15 @@ namespace OpenAorus.Hardware.Wmi.Schema;
 /// <param name="Compared">How many methods were actually judged. A thin comparison is a weak
 /// verdict even when it passes, so the number travels with the answer rather than being
 /// recomputed by whoever reads it.</param>
+/// <param name="Gate">Which gate said this. It travels with the verdict rather than being supplied
+/// at print time, because the two gates prove different things and a line that named the wrong one
+/// would have the log claim a write was tested when only reads were.</param>
 public sealed record GateVerdict(
     bool Passed,
     IReadOnlyList<string> Failures,
     IReadOnlyList<string> Warnings,
-    int Compared)
+    int Compared,
+    string Gate = "Gate A")
 {
     /// <summary>A verdict with nothing broken.</summary>
     /// <param name="compared">How many methods were judged.</param>
@@ -32,8 +36,8 @@ public sealed record GateVerdict(
     /// <summary>One line for the log and the diagnostics dump.</summary>
     /// <returns>The verdict, how much evidence was behind it, and the first thing that broke.</returns>
     public string Summary() => Passed
-        ? string.Format(CultureInfo.InvariantCulture, "Gate A: passed, {0} methods compared, {1} warnings", Compared, Warnings.Count)
-        : string.Format(CultureInfo.InvariantCulture, "Gate A: FAILED, {0} compared - {1}", Compared,
+        ? string.Format(CultureInfo.InvariantCulture, "{0}: passed, {1} methods compared, {2} warnings", Gate, Compared, Warnings.Count)
+        : string.Format(CultureInfo.InvariantCulture, "{0}: FAILED, {1} compared - {2}", Gate, Compared,
             Failures.Count > 0 ? Failures[0] : "no reason recorded");
 }
 

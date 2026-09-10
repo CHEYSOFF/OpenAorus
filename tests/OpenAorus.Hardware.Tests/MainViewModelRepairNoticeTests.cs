@@ -118,6 +118,18 @@ public class MainViewModelRepairNoticeTests : IDisposable
     }
 
     [Fact]
+    public void A_repaired_gate_record_says_that_writes_are_locked_rather_than_blaming_the_fans()
+    {
+        var vm = FromSettingsFile("{ \"Schema\": { \"GatesPassed\": true } }");
+
+        Assert.Equal(BannerKind.Warning, vm.Banner);
+        Assert.Contains("hardware check", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("lighting", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("curve", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("hotkey", vm.BannerText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void A_settled_file_raises_no_notice_at_all()
     {
         var vm = FromSettingsFile("{ \"Mode\": \"Gaming\", \"FixedPercent\": 45 }");
