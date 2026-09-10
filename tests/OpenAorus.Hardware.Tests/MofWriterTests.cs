@@ -102,6 +102,58 @@ public class MofWriterTests
     }
 
     [Fact]
+    public void Every_class_prints_one_line_for_every_property_it_did_not_inherit()
+    {
+        // The assertion the inherited-property rule was missing. Counting what the parser found
+        // says nothing about what was printed, and the rule that decides is a silent skip: a
+        // property it wrongly caught would leave the MOF without a word said anywhere.
+        AssertEveryDeclaredPropertyIsPrinted(Schema, Install);
+    }
+
+    [Fact]
+    public void A_bare_property_on_a_class_that_inherits_nothing_still_reaches_the_file()
+    {
+        // GB_WMIACPI_Get declares no base class, so a property carrying no qualifiers there
+        // cannot have been enumerated off one and dropping it is unambiguously wrong. This is
+        // the reviewer's experiment: before the rule was gated, FutureThing vanished and the only
+        // test that noticed was a property count someone adding a property would be updating.
+        var schema = With(WmiSchemaParser.GetClass, Bare("FutureThing", WmiParamType.UInt8Array));
+        var text = MofWriter.WriteInstall(schema, "fp");
+
+        Assert.Contains("    uint8 FutureThing[];\r\n", text, StringComparison.Ordinal);
+        AssertEveryDeclaredPropertyIsPrinted(schema, text);
+    }
+
+    [Fact]
+    public void A_bare_property_on_the_class_that_does_derive_is_still_left_to_the_base_class()
+    {
+        // The other direction, and the reason the rule exists at all: GB_WMIACPI_Event derives
+        // from WMIEvent, so a property with nothing to declare is one WMI enumerated off the
+        // base. Redeclaring it is a redefinition of an inherited member.
+        var schema = With(WmiSchemaParser.EventClass, Bare("TIME_WRITTEN", WmiParamType.UInt64));
+        var text = MofWriter.WriteInstall(schema, "fp");
+
+        Assert.DoesNotContain("TIME_WRITTEN", text, StringComparison.Ordinal);
+        AssertEveryDeclaredPropertyIsPrinted(schema, text);
+    }
+
+    [Fact]
+    public void A_property_recovered_as_UInt64_prints_at_that_width_rather_than_throwing()
+    {
+        // TIME_CREATED is the dump's only UInt64 and it lives on the class that derives, so the
+        // inherited rule caught it before the type map ever saw it. Gating that rule puts a
+        // UInt64 one edit away from the printer, and a printer that throws on a recovered type
+        // is a writer that cannot print the schema it was given.
+        var text = MofWriter.WriteInstall(
+            With(WmiSchemaParser.GetClass, new WmiSchemaProperty(
+                "Ticks", WmiParamType.UInt64, IsKey: false, CanRead: true, CanWrite: false,
+                DataId: null, Max: null, Description: "")),
+            "fp");
+
+        Assert.Contains("    [read] uint64 Ticks;\r\n", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_event_payload_keeps_its_array_bound()
     {
         Assert.Contains(
@@ -183,18 +235,39 @@ public class MofWriterTests
     [Fact]
     public void A_type_it_was_never_taught_to_print_is_refused_rather_than_guessed_at()
     {
+        // Every type the dump uses is now printable, UInt64 included, so the guard is stated
+        // against a value outside the enum: a CIM type added to WmiParamType and forgotten in the
+        // type map. Falling back to some default width there would declare a buffer slot of a
+        // size the firmware does not use, and nothing would read back as wrong until it did.
         var bad = new WmiSchema(new[]
         {
             new WmiSchemaClass("X", "{0}", "", Array.Empty<WmiSchemaProperty>(), new[]
             {
                 new WmiSchemaMethod("M", 1, "", new[]
                 {
-                    new WmiSchemaParam("P", WmiParamType.UInt64, WmiParamDirection.In, 0, ""),
+                    new WmiSchemaParam("P", (WmiParamType)(-1), WmiParamDirection.In, 0, ""),
                 }),
             }),
         });
 
         Assert.Throws<NotSupportedException>(() => MofWriter.WriteInstall(bad, "fp"));
+    }
+
+    [Fact]
+    public void Every_type_the_dump_actually_uses_can_be_printed()
+    {
+        // The other half of the guard above. A recovered type the writer refuses is not caution,
+        // it is a writer that cannot print the schema it was handed.
+        foreach (var type in Enum.GetValues<WmiParamType>())
+        {
+            var text = MofWriter.WriteInstall(
+                With(WmiSchemaParser.GetClass, new WmiSchemaProperty(
+                    "Probe", type, IsKey: false, CanRead: true, CanWrite: false,
+                    DataId: null, Max: null, Description: "")),
+                "fp");
+
+            Assert.Contains(" Probe", text, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -341,6 +414,75 @@ public class MofWriterTests
         {
             if (File.Exists(path)) File.Delete(path);
         }
+    }
+
+    /// <summary>The recovered schema with one more property on the named class.</summary>
+    private static WmiSchema With(string className, WmiSchemaProperty extra) =>
+        new(Schema.Classes
+            .Select(c => string.Equals(c.Name, className, StringComparison.Ordinal)
+                ? c with { Properties = c.Properties.Append(extra).ToArray() }
+                : c)
+            .ToArray());
+
+    /// <summary>A property shaped exactly like the two the dump shows as inherited members.</summary>
+    private static WmiSchemaProperty Bare(string name, WmiParamType type) =>
+        new(name, type, IsKey: false, CanRead: false, CanWrite: false,
+            DataId: null, Max: null, Description: "");
+
+    /// <summary>Whether the dump gave a property nothing at all to declare.</summary>
+    private static bool CarriesNothing(WmiSchemaProperty p) =>
+        !p.IsKey && !p.CanRead && !p.CanWrite && p.DataId is null && p.Max is null && p.Description.Length == 0;
+
+    /// <summary>
+    /// Every property the parser found is printed, except on a class that names a base class,
+    /// where a property with nothing to declare is one WMI enumerated off that base.
+    /// </summary>
+    /// <remarks>
+    /// Whether a class derives is read back out of the printed text rather than assumed, because
+    /// that is the half of the rule that was wrong: the skip was applied to all four classes and
+    /// only one of them emits a base class.
+    /// </remarks>
+    private static void AssertEveryDeclaredPropertyIsPrinted(WmiSchema schema, string mof)
+    {
+        foreach (var c in schema.Classes)
+        {
+            var derives = ClassLineOf(mof, c.Name).Contains(" : ", StringComparison.Ordinal);
+            var expected = c.Properties.Where(p => !(derives && CarriesNothing(p))).Select(p => p.Name).ToArray();
+            var printed = PropertyLinesOf(mof, c.Name);
+
+            Assert.Equal(expected.Length, printed.Count);
+            foreach (var name in expected)
+                Assert.Contains(printed, l => l.Contains($" {name};", StringComparison.Ordinal)
+                                              || l.Contains($" {name}[];", StringComparison.Ordinal));
+        }
+    }
+
+    private static string ClassLineOf(string mof, string className)
+    {
+        var hits = mof.Split("\r\n")
+            .Where(l => l.StartsWith($"class {className}", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Single(hits);
+        return hits[0];
+    }
+
+    /// <summary>The property declarations printed inside one class's braces.</summary>
+    /// <remarks>A method costs two lines - a qualifier line ending in ']' and a signature line
+    /// beginning 'void' - so what is left ending in ';' is a property and nothing else.</remarks>
+    private static List<string> PropertyLinesOf(string mof, string className)
+    {
+        var start = mof.IndexOf(ClassLineOf(mof, className), StringComparison.Ordinal);
+        var open = mof.IndexOf("\r\n{\r\n", start, StringComparison.Ordinal);
+        var close = mof.IndexOf("\r\n};", open, StringComparison.Ordinal);
+        Assert.True(open > 0 && close > open, $"class {className} has no body in the printed MOF");
+
+        return mof[(open + "\r\n{\r\n".Length)..close]
+            .Split("\r\n")
+            .Where(l => l.StartsWith("    ", StringComparison.Ordinal))
+            .Where(l => l.EndsWith(";", StringComparison.Ordinal))
+            .Where(l => !l.StartsWith("    void ", StringComparison.Ordinal))
+            .ToList();
     }
 
     private static string HeaderOf(string className)

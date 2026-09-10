@@ -494,15 +494,77 @@ public class SchemaRegistrarTests
 
     // ---- The class that is present but declares nothing ---------------------------------------
 
-    [Fact]
-    public void A_registration_whose_methods_vanished_is_refused_but_the_owner_is_told_why()
+    /// <summary>Our own registration after a WMI repository rebuild took its methods away.</summary>
+    /// <remarks>Every class name still resolves, our marker still records the schema the install
+    /// file wrote, and both method-bearing classes declare nothing.</remarks>
+    private static FakeSchemaSystem MachineWeRegisteredThatRebuiltItself()
     {
-        // A WMI repository rebuild can leave our own classes present and empty. Task 4 classifies
-        // that as Foreign, which withholds Remove as well as Install, so the refusal has to name
-        // the evidence that says it was probably ours - otherwise the owner is stuck with no
-        // account of why.
         var sys = new FakeSchemaSystem { MarkerFingerprint = Fingerprint };
         foreach (var n in SchemaClasses.All) sys.Classes.Add(n);
+        sys.CompileForReal(Fingerprint, RealIds());
+        return sys;
+    }
+
+    [Fact]
+    public void A_registration_of_ours_whose_methods_vanished_can_still_be_removed()
+    {
+        // The owner's way out, and the whole reason OursEmptied exists. Before it, this machine
+        // read as Foreign, which withholds Remove as well as Install - so the app refused to undo
+        // something the app itself had done, and an elevated mofcomp prompt was the only escape.
+        var sys = MachineWeRegisteredThatRebuiltItself();
+
+        var r = SchemaRegistrar.Remove(sys, elevated: true, Fingerprint);
+
+        Assert.True(r.Success);
+        Assert.Equal(SchemaStatus.Absent, r.Status);
+        Assert.NotEmpty(sys.MofCompCalls);
+        Assert.Empty(sys.Classes);
+    }
+
+    [Fact]
+    public void A_registration_of_ours_whose_methods_vanished_is_still_never_installed_over()
+    {
+        // Remove only. The names are taken, the classes bind nothing, and -class:createonly would
+        // refuse anyway - so nothing is compiled and the owner is told what the machine is in.
+        var sys = MachineWeRegisteredThatRebuiltItself();
+
+        var r = SchemaRegistrar.Install(sys, elevated: true, Fingerprint);
+
+        Assert.False(r.Success);
+        Assert.Equal(SchemaStatus.OursEmptied, r.Status);
+        Assert.Empty(sys.MofCompCalls);
+        Assert.Contains("no longer declare any methods", r.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_control_center_machine_is_left_exactly_as_it_was()
+    {
+        // The other direction of the same change. Nothing about OursEmptied may reach a machine
+        // whose classes declare methods: no marker of ours, both buttons refused, no mofcomp.
+        var sys = MachineWithControlCenter();
+
+        var removed = SchemaRegistrar.Remove(sys, elevated: true, Fingerprint);
+        var installed = SchemaRegistrar.Install(sys, elevated: true, Fingerprint);
+
+        Assert.False(removed.Success);
+        Assert.False(installed.Success);
+        Assert.Equal(SchemaStatus.Foreign, removed.Status);
+        Assert.Equal(SchemaStatus.Foreign, installed.Status);
+        Assert.Empty(sys.MofCompCalls);
+        Assert.Equal(4, sys.Classes.Count);
+    }
+
+    [Fact]
+    public void A_marker_beside_classes_that_still_declare_methods_is_refused_and_told_why()
+    {
+        // A marker of ours over a mapping that is not ours. The classes declare methods, so this
+        // is not our registration emptied, and it stays Foreign - but the refusal names the
+        // marker rather than telling the owner a stranger did it.
+        var sys = MachineWithControlCenter();
+        sys.Classes.Add(MofWriter.MarkerClass);
+        sys.MarkerFingerprint = Fingerprint;
+        sys.MethodIds[WmiSchemaParser.GetClass] =
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["GetSomethingElse"] = 1 };
 
         var r = SchemaRegistrar.Remove(sys, elevated: true, Fingerprint);
 

@@ -54,9 +54,10 @@ public sealed class WmiClassReading
 
 /// <summary>Reads WMI class metadata. The whole of this feature's OS-facing surface.</summary>
 /// <remarks>
-/// It reads class <em>definitions</em> and nothing else. There is deliberately no way to enumerate
-/// an instance or invoke a method through this seam: instance enumeration is the operation that
-/// reaches the firmware, and this runs at startup to decide what the window shows.
+/// It reads class <em>definitions</em>, and one instance: our own marker, which our own install
+/// file declares and which has no provider behind it. There is deliberately no way to enumerate an
+/// instance of a <c>GB_WMIACPI_*</c> class or to invoke a method through this seam - that is the
+/// operation that reaches the firmware, and this runs at startup to decide what the window shows.
 /// </remarks>
 public interface IWmiClassSource
 {
@@ -64,11 +65,22 @@ public interface IWmiClassSource
     /// <param name="className">The class name, in the reader's namespace.</param>
     /// <returns>Present with its method ids, absent, or unreadable with a reason.</returns>
     WmiClassReading Read(string className);
+
+    /// <summary>Reads the schema fingerprint our marker instance records.</summary>
+    /// <returns>The fingerprint the registration wrote down when it was made, or null if there is
+    /// no marker, it carries none, or it could not be read.</returns>
+    /// <remarks>
+    /// The one instance this seam reads, and it is one this app wrote. <c>OpenAorus_SchemaMarker</c>
+    /// is a plain data class declared by our own install file with no provider behind it, so
+    /// fetching it goes to the repository and not to ACPI - which is the line the rest of this
+    /// interface exists to stay on.
+    /// </remarks>
+    string? ReadMarkerFingerprint();
 }
 
 /// <summary>One reading of the machine, and what may be done to it.</summary>
 /// <param name="Status">The state, or null if the machine could not be read at all - see
-/// <paramref name="Failure"/>. Null is not a sixth state; it is the absence of an answer, and
+/// <paramref name="Failure"/>. Null is not a seventh state; it is the absence of an answer, and
 /// every permission below is false while it lasts.</param>
 /// <param name="Snapshot">What was found, or null alongside a null <paramref name="Status"/>.</param>
 /// <param name="Failure">What Windows reported, or null if the machine was read cleanly.</param>
@@ -164,10 +176,24 @@ public static class SchemaProbe
             DataPresent: readings[WmiSchemaParser.DataClass].IsPresent,
             EventPresent: readings[WmiSchemaParser.EventClass].IsPresent,
             MarkerPresent: readings[MofWriter.MarkerClass].IsPresent,
+            MarkerFingerprint: MarkerRecord(source),
             LiveFingerprint: live.Count == 0 ? null : SchemaFingerprint.OfLive(live));
 
         return new SchemaReport(
             SchemaState.Classify(snapshot, expectedFingerprint, gatesRecorded), snapshot, Failure: null);
+    }
+
+    /// <summary>Reads what the marker wrote down, treating any failure as "it did not say".</summary>
+    /// <remarks>
+    /// A marker that will not answer is not an unreadable machine: the five class readings above
+    /// already said what is registered, and this only adds what the registration recorded about
+    /// itself. Null is the safe answer everywhere it is used - it matches no fingerprint, so it
+    /// can only ever withhold <see cref="SchemaStatus.OursEmptied"/>, never grant it.
+    /// </remarks>
+    private static string? MarkerRecord(IWmiClassSource source)
+    {
+        try { return source.ReadMarkerFingerprint(); }
+        catch (Exception) { return null; }
     }
 
     /// <summary>Reads one class, turning anything the seam throws into an unreadable answer.</summary>

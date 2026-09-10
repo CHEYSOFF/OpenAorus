@@ -66,6 +66,27 @@ public class WmiSchemaParserTests
         Assert.Empty(Schema.Class(WmiSchemaParser.EventClass).Methods);
     }
 
+    [Fact]
+    public void Every_recovered_method_records_itself_implemented_readable_and_writable()
+    {
+        // MofWriter prints "Implemented, read, write" beside every method it declares. That is
+        // only a reproduction if the dump said all three, so this reads them straight out of the
+        // file rather than out of the parse. The parser refuses a method that does not carry all
+        // three, so the dump parsing at all is the other half of the same statement.
+        var headers = ReadDump()
+            .Split('\n')
+            .Where(l => l.Contains("WmiMethodId=", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(143, headers.Length);
+        foreach (var header in headers)
+        {
+            Assert.Contains("Implemented=True", header, StringComparison.Ordinal);
+            Assert.Contains("read=True", header, StringComparison.Ordinal);
+            Assert.Contains("write=True", header, StringComparison.Ordinal);
+        }
+    }
+
     [Theory]
     [InlineData("GB_WMIACPI_Get", "{ABBC0F6F-8EA1-11d1-00A0-C90629100000}")]
     [InlineData("GB_WMIACPI_Set", "{ABBC0F75-8EA1-11d1-00A0-C90629100000}")]
@@ -399,6 +420,44 @@ public class WmiSchemaParserTests
         var text = Mutate("WmiMethodId=70;", "WmiMethodId=seventy;");
 
         Assert.Throws<FormatException>(() => WmiSchemaParser.Parse(text));
+    }
+
+    [Fact]
+    public void A_method_recorded_as_not_implemented_is_refused()
+    {
+        // Exactly what firmware that does not implement a method would record. The MOF declares
+        // every method it prints as Implemented, so a dump line saying otherwise must stop the
+        // parse rather than be printed as its opposite: the app would be told a method exists
+        // that the controller will not answer.
+        var text = Mutate(
+            "GetCPUFanDuty [Description=Get CPU Fan Duty; Implemented=True;",
+            "GetCPUFanDuty [Description=Get CPU Fan Duty; Implemented=False;");
+
+        var ex = Assert.Throws<FormatException>(() => WmiSchemaParser.Parse(text));
+        Assert.Contains("Implemented", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("GetCPUFanDuty", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_method_that_does_not_record_itself_readable_is_refused()
+    {
+        var text = Mutate(
+            "Implemented=True; read=True; WmiMethodId=70;",
+            "Implemented=True; WmiMethodId=70;");
+
+        var ex = Assert.Throws<FormatException>(() => WmiSchemaParser.Parse(text));
+        Assert.Contains("read", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("GetCPUFanDuty", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_method_that_does_not_record_itself_writable_is_refused()
+    {
+        var text = Mutate("WmiMethodId=70; write=True]", "WmiMethodId=70]");
+
+        var ex = Assert.Throws<FormatException>(() => WmiSchemaParser.Parse(text));
+        Assert.Contains("write", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("GetCPUFanDuty", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

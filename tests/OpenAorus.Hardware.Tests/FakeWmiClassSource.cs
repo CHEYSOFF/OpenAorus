@@ -69,10 +69,28 @@ internal sealed class FakeWmiClassSource : IWmiClassSource
         return this;
     }
 
+    /// <summary>Says what the marker instance records, once the marker class is there to carry it.</summary>
+    public FakeWmiClassSource Records(string fingerprint)
+    {
+        MarkerFingerprint = fingerprint;
+        return this;
+    }
+
+    /// <summary>What the marker instance records, or null for a marker that recorded nothing.</summary>
+    public string? MarkerFingerprint { get; set; }
+
+    /// <summary>Thrown by <see cref="ReadMarkerFingerprint"/>, for a marker that will not answer.</summary>
+    public Exception? MarkerFailure { get; set; }
+
     public WmiClassReading Read(string className)
     {
         Asked.Add(className);
         if (_throws is not null) throw _throws;
         return _answers.TryGetValue(className, out var reading) ? reading : _otherwise;
     }
+
+    public string? ReadMarkerFingerprint() =>
+        MarkerFailure is { } ex ? throw ex
+        : _answers.TryGetValue(MofWriter.MarkerClass, out var marker) && marker.IsPresent ? MarkerFingerprint
+        : null;
 }

@@ -67,11 +67,21 @@ public interface ISchemaSystem
 
     /// <summary>Reads the schema fingerprint our marker instance records.</summary>
     /// <returns>The fingerprint the registration wrote down when it was made, or null if there is
-    /// no marker or it carries none.</returns>
-    /// <remarks>This is the record of what was changed, and it lives in WMI rather than in the
-    /// settings file on purpose: a settings file can be deleted while the classes stay behind, and
-    /// a schema whose only record of itself is gone is a schema nobody can account for. It feeds
-    /// messages only - never a decision about whether to compile or delete anything.</remarks>
+    /// no marker, it carries none, or it could not be read.</returns>
+    /// <remarks>
+    /// <para>
+    /// This is the record of what was changed, and it lives in WMI rather than in the settings file
+    /// on purpose: a settings file can be deleted while the classes stay behind, and a schema whose
+    /// only record of itself is gone is a schema nobody can account for.
+    /// </para>
+    /// <para>
+    /// It feeds the refusal messages, and exactly one decision:
+    /// <see cref="Wmi.Schema.SchemaStatus.OursEmptied"/>, which needs this to record the schema our
+    /// install file writes before it will permit a removal. Null - no marker, no record, or a read
+    /// that failed - matches no fingerprint, so a marker that will not answer can only ever
+    /// withhold that permission and never grant it.
+    /// </para>
+    /// </remarks>
     string? ReadMarkerFingerprint();
 
     /// <summary>Runs <c>mofcomp.exe</c> with these arguments and waits for it.</summary>

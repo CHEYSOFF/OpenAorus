@@ -7,7 +7,7 @@ namespace OpenAorus.Hardware.Wmi.Schema;
 /// decided by re-reading the repository afterwards, never by <c>mofcomp</c>'s exit code alone.</param>
 /// <param name="Status">The state the machine is in now, or null if the operation refused before it
 /// had looked - not elevated, no compiler - or if the repository could not be read at all. Null is
-/// not a sixth state; it is the absence of an answer, exactly as in
+/// not a seventh state; it is the absence of an answer, exactly as in
 /// <see cref="SchemaReport.Status"/>.</param>
 /// <param name="Message">Owner-facing prose saying what was done, what state the machine ended in,
 /// and, on any failure involving the compiler, what the compiler itself said.</param>
@@ -93,6 +93,7 @@ public static class SchemaRegistrar
             DataPresent: present[WmiSchemaParser.DataClass],
             EventPresent: present[WmiSchemaParser.EventClass],
             MarkerPresent: present[MofWriter.MarkerClass],
+            MarkerFingerprint: MarkerRecord(sys),
             LiveFingerprint: live.Count == 0 ? null : SchemaFingerprint.OfLive(live));
     }
 
@@ -369,16 +370,19 @@ public static class SchemaRegistrar
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Foreign withholds Remove as well as Install, and one way to reach it is our own doing: a WMI
-    /// repository rebuild can leave our classes present but declaring nothing, which fingerprints
-    /// as a mapping we did not install. The classification is right - the app cannot prove those
-    /// names still reach the firmware methods it recorded - but a bare "something else registered
-    /// this" would be a false account of it.
+    /// Foreign withholds Remove as well as Install, and a marker standing beside the classes says
+    /// an OpenAorus registration was made on this machine at some point. The classification is
+    /// still right - what is there now does not match what we install, so the app cannot say those
+    /// names reach the firmware methods it recorded - but a bare "something else registered this"
+    /// would be a false account of it.
     /// </para>
     /// <para>
-    /// So the marker is read and quoted. It never changes the decision: an install over a stranger
-    /// stays refused, and a removal of a stranger's classes stays refused. It only means the owner
-    /// is told which of the two situations they are in.
+    /// The one shape of this the app can act on has its own state.
+    /// <see cref="SchemaStatus.OursEmptied"/> - our marker recording our schema over classes that
+    /// declare nothing - permits Remove, and never reaches here. What is left is a marker over a
+    /// mapping that is neither ours nor empty, and this note says so without promising anything:
+    /// an install over a stranger stays refused, and a removal of a stranger's classes stays
+    /// refused. It only means the owner is told which situation they are in.
     /// </para>
     /// </remarks>
     private static string MarkerNote(ISchemaSystem sys, SchemaStatus status)
@@ -387,13 +391,17 @@ public static class SchemaRegistrar
         if (MarkerRecord(sys) is not { Length: > 0 } recorded) return string.Empty;
 
         return " An OpenAorus marker is still registered beside those classes and records schema " +
-               recorded + ", so this may be OpenAorus's own registration that a WMI repository " +
-               "rebuild left without its methods rather than another program's. OpenAorus still " +
-               "will not delete it, because the classes carry Gigabyte's names and what is on the " +
-               "machine no longer matches what OpenAorus installed.";
+               recorded + ", so OpenAorus did register this machine at some point. What is on the " +
+               "machine now is neither that schema nor an empty copy of it, so OpenAorus cannot " +
+               "say what those names reach and will not delete classes carrying Gigabyte's names " +
+               "on that basis.";
     }
 
-    /// <summary>Reads the marker, treating any failure as "it did not say". A message, never a decision.</summary>
+    /// <summary>Reads the marker, treating any failure as "it did not say".</summary>
+    /// <remarks>It feeds the refusal message above and one decision:
+    /// <see cref="SchemaStatus.OursEmptied"/>, which needs the marker to record the schema our
+    /// install file writes. Null is the safe answer for both - it matches no fingerprint, so a
+    /// marker that will not answer can only ever withhold a permission, never grant one.</remarks>
     private static string? MarkerRecord(ISchemaSystem sys)
     {
         try { return sys.ReadMarkerFingerprint(); }

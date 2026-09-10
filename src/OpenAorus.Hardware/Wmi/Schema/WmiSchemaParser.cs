@@ -16,7 +16,8 @@ namespace OpenAorus.Hardware.Wmi.Schema;
 /// </para>
 /// <para>
 /// WHICH IS WHY THIS PARSER IS STRICT RATHER THAN FORGIVING. A line it does not recognise is a
-/// <see cref="FormatException"/>, not a skip. A method with no id, a parameter with no id or no
+/// <see cref="FormatException"/>, not a skip. A method with no id, a method the dump does not
+/// record as <c>Implemented</c>, <c>read</c> and <c>write</c>, a parameter with no id or no
 /// recorded direction, a type it has not been taught, a duplicate id - all stop the parse. The
 /// failure a lenient parser produces is a MOF quietly missing a method nobody noticed was dropped,
 /// and silence is the one failure mode that would not be caught before it reached the hardware.
@@ -247,7 +248,47 @@ public static class WmiSchemaParser
         var id = quals.RequiredInt("WmiMethodId", lineNumber, raw,
             $"method '{name}' carries no WmiMethodId, and the id is the number the firmware dispatches on");
 
+        RequireMethodFlags(name, quals, lineNumber, raw);
+
         return new WmiSchemaMethod(name, id, quals.Text("Description"), Array.Empty<WmiSchemaParam>());
+    }
+
+    /// <summary>
+    /// The three method qualifiers <see cref="MofWriter"/> prints beside every method it declares.
+    /// </summary>
+    /// <remarks>All 143 recovered methods carry all three, and the MOF prints them as constants
+    /// rather than carrying them on the model. That is a reproduction only for as long as the
+    /// statement holds, so it is checked here instead of assumed there.</remarks>
+    private static readonly string[] s_methodFlags = { "Implemented", "read", "write" };
+
+    /// <summary>Refuses a method that does not record all three of <see cref="s_methodFlags"/>.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>Implemented=False</c> is exactly what firmware that does not implement a method would
+    /// record, and it is well-formed: it parses, it carries an id, and nothing further down would
+    /// notice. Printed through a writer that declares <c>Implemented</c> unconditionally, it
+    /// becomes a MOF telling the app a method exists that the controller will not answer - and the
+    /// app finds that out by calling it.
+    /// </para>
+    /// <para>
+    /// Refused here rather than carried on the model and printed from it, because the qualifiers
+    /// are not the only thing at stake. Everything downstream - the fingerprint, the named-write
+    /// table, fan control - is generated from the parse and reads method ids, not qualifiers, so a
+    /// method the firmware disowns has to stop at the door rather than be printed more accurately.
+    /// A future dump that genuinely carries one is a schema this app has not been designed against.
+    /// </para>
+    /// </remarks>
+    private static void RequireMethodFlags(string name, Qualifiers quals, int lineNumber, string raw)
+    {
+        foreach (var flag in s_methodFlags)
+        {
+            if (quals.IsTrue(flag)) continue;
+
+            throw Bad(lineNumber, raw,
+                $"method '{name}' does not record {flag}=True. The MOF declares every method it " +
+                "prints as Implemented, read and write, so a method the dump does not record that " +
+                "way would be printed as something the dump never said");
+        }
     }
 
     private static WmiSchemaParam ParseParam(string line, int lineNumber, string raw)

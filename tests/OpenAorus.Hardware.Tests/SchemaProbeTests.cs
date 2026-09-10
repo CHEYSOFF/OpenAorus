@@ -14,8 +14,9 @@ namespace OpenAorus.Hardware.Tests;
 /// </para>
 /// <para>
 /// Every test here goes through <see cref="IWmiClassSource"/>, which is the whole of the OS-facing
-/// surface. That seam reads class definitions only - it has no way to enumerate an instance, which
-/// is the operation that would reach the firmware.
+/// surface. That seam reads class definitions and one instance - our own marker, a plain data
+/// class with no provider behind it. It has no way to enumerate an instance of a
+/// <c>GB_WMIACPI_*</c> class, which is the operation that would reach the firmware.
 /// </para>
 /// </remarks>
 public class SchemaProbeTests
@@ -143,6 +144,80 @@ public class SchemaProbeTests
         Assert.Equal(SchemaStatus.Foreign, empty.Status);
         Assert.Equal(SchemaStatus.Partial, gone.Status);
         Assert.False(empty.WritesUnlocked);
+    }
+
+    // ---- The registration of ours that a repository rebuild emptied ---------------------------
+
+    /// <summary>Our own registration with every method gone off both method-bearing classes.</summary>
+    private static FakeWmiClassSource RebuiltOverOurRegistration() =>
+        FakeWmiClassSource.Registered(Schema, marker: true)
+            .Declares(WmiSchemaParser.GetClass)
+            .Declares(WmiSchemaParser.SetClass);
+
+    [Fact]
+    public void A_registration_of_ours_that_a_rebuild_emptied_offers_remove_and_only_remove()
+    {
+        // The button the owner needs, and the reason this state exists. Read as Foreign, the app
+        // offers nothing at all and the only way out is running the removal MOF by hand from an
+        // elevated prompt.
+        var report = SchemaProbe.Read(
+            RebuiltOverOurRegistration().Records(Expected), Expected, gatesRecorded: true);
+
+        Assert.Equal(SchemaStatus.OursEmptied, report.Status);
+        Assert.True(report.CanRemove);
+        Assert.False(report.CanInstall);
+        Assert.False(report.WritesUnlocked);
+        Assert.Equal(Expected, report.Snapshot!.MarkerFingerprint);
+        Assert.NotEqual(Expected, report.Snapshot.LiveFingerprint);
+    }
+
+    [Fact]
+    public void Emptied_classes_whose_marker_records_nothing_offer_no_button_at_all()
+    {
+        // The marker class being there is not the evidence. What it recorded is.
+        var report = SchemaProbe.Read(RebuiltOverOurRegistration(), Expected, gatesRecorded: true);
+
+        Assert.Equal(SchemaStatus.Foreign, report.Status);
+        Assert.False(report.CanRemove);
+        Assert.False(report.CanInstall);
+    }
+
+    [Fact]
+    public void A_marker_that_will_not_answer_withholds_the_permission_rather_than_granting_it()
+    {
+        var source = RebuiltOverOurRegistration().Records(Expected);
+        source.MarkerFailure = new InvalidOperationException("the repository is being rebuilt");
+
+        var report = SchemaProbe.Read(source, Expected, gatesRecorded: true);
+
+        // Not an unreadable machine - the five class readings all answered. Just a marker that
+        // said nothing, which matches no fingerprint and so can only ever refuse.
+        Assert.Equal(SchemaStatus.Foreign, report.Status);
+        Assert.Null(report.Failure);
+        Assert.False(report.CanRemove);
+    }
+
+    [Fact]
+    public void Classes_that_still_declare_methods_are_never_read_as_a_registration_of_ours_that_emptied()
+    {
+        // The marker records our schema, but the classes are not empty - one method sits on a
+        // different firmware number. A machine whose classes declare methods is a machine whose
+        // names reach something, and this app has no account of what. Both buttons stay withheld.
+        var live = SchemaFingerprintTests.LiveFrom(Schema);
+        var get = new Dictionary<string, int>(live[WmiSchemaParser.GetClass], StringComparer.Ordinal)
+        {
+            ["GetCPUFanDuty"] = 71,
+        };
+
+        var source = FakeWmiClassSource.Registered(Schema, marker: true)
+            .Declares(WmiSchemaParser.GetClass, get)
+            .Records(Expected);
+
+        var report = SchemaProbe.Read(source, Expected, gatesRecorded: true);
+
+        Assert.Equal(SchemaStatus.Foreign, report.Status);
+        Assert.False(report.CanRemove);
+        Assert.False(report.CanInstall);
     }
 
     [Fact]

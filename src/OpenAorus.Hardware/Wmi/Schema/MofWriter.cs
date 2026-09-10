@@ -190,14 +190,17 @@ public static class MofWriter
             mof.Append(',').Append(Nl).Append(' ').Append("Description(").Append(Quoted(declared.Description)).Append(')');
         mof.Append(']').Append(Nl);
 
+        var baseClass = BaseClassOf(declared);
+
         mof.Append("class ").Append(declared.Name);
-        if (string.Equals(declared.Name, WmiSchemaParser.EventClass, StringComparison.Ordinal))
-            mof.Append(" : ").Append(EventBaseClass);
+        if (baseClass is not null) mof.Append(" : ").Append(baseClass);
         mof.Append(Nl).Append('{').Append(Nl);
 
         foreach (var property in declared.Properties)
         {
-            if (IsInherited(property)) continue;
+            // Gated on this class actually naming a base class. A class that names none has
+            // nothing to inherit from, so a bare property there is a real property.
+            if (baseClass is not null && IsInherited(property)) continue;
             AppendProperty(mof, property);
         }
 
@@ -210,10 +213,19 @@ public static class MofWriter
         mof.Append("};").Append(Nl);
     }
 
+    /// <summary>The class this one derives from, or null if it derives from nothing.</summary>
+    /// <remarks>Exactly one of the recovered classes names a base, and saying so in one place is
+    /// what lets <see cref="IsInherited"/> be applied only where inheriting is possible.</remarks>
+    private static string? BaseClassOf(WmiSchemaClass declared) =>
+        string.Equals(declared.Name, WmiSchemaParser.EventClass, StringComparison.Ordinal)
+            ? EventBaseClass
+            : null;
+
     /// <summary>
     /// Whether a recovered property was enumerated off a base class rather than declared.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The two the dump shows - <c>SECURITY_DESCRIPTOR</c> and <c>TIME_CREATED</c> on the event
     /// class - are the only lines in the whole file carrying an empty qualifier list, and they
     /// are WMI's own. Rather than name them, this asks the question their emptiness answers: a
@@ -221,6 +233,15 @@ public static class MofWriter
     /// <c>MAX</c> and no description carries nothing to declare. Redeclaring one on a derived
     /// class is a redefinition of an inherited member, which is why this is a skip and not a
     /// print.
+    /// </para>
+    /// <para>
+    /// ONLY ASK THIS OF A CLASS THAT NAMES A BASE. The question is meaningless otherwise, and the
+    /// answer is destructive: on <c>GB_WMIACPI_Get</c>, which derives from nothing, a property
+    /// carrying no qualifiers cannot have been inherited, and skipping it drops a real property
+    /// out of the MOF in silence. <see cref="AppendClass"/> is where the gate lives, and
+    /// <c>MofWriterTests</c> counts the printed lines against the parsed properties per class so
+    /// that a drop cannot pass as a number someone was about to update anyway.
+    /// </para>
     /// </remarks>
     private static bool IsInherited(WmiSchemaProperty property) =>
         !property.IsKey && !property.CanRead && !property.CanWrite &&
@@ -244,9 +265,11 @@ public static class MofWriter
 
     private static void AppendMethod(StringBuilder mof, WmiSchemaMethod method)
     {
-        // Implemented, read and write are constant across all 143 recovered methods and the
-        // parser does not carry them, so they are printed rather than looked up. WmiMethodId
-        // leads, because it is the only number on the line.
+        // Implemented, read and write are printed as constants because WmiSchemaParser refuses
+        // any method that does not record all three, so the constant is what the dump said for
+        // every method that got this far - a reproduction and not an invention. Loosen that
+        // refusal and these three have to come off the model instead. WmiMethodId leads, because
+        // it is the only number on the line.
         mof.Append(Indent).Append("[WmiMethodId(").Append(Number(method.MethodId))
            .Append("), Implemented, read, write");
         if (method.Description.Length > 0)
@@ -295,14 +318,27 @@ public static class MofWriter
     }
 
     /// <summary>Maps a recovered CIM type to its MOF spelling.</summary>
-    /// <remarks>A type this has not been taught stops the print. The alternative - falling back
-    /// to some default width - declares a buffer slot of a size the firmware does not use, and
-    /// the mismatch would not show up until something read back as noise.</remarks>
+    /// <remarks>
+    /// <para>
+    /// Every type <see cref="WmiParamType"/> holds is printable, so a recovered schema always
+    /// prints. A type this has not been taught still stops the print - which now means a value
+    /// added to that enum and forgotten here. The alternative, falling back to some default
+    /// width, declares a buffer slot of a size the firmware does not use, and the mismatch would
+    /// not show up until something read back as noise.
+    /// </para>
+    /// <para>
+    /// <c>uint64</c> is here because <c>TIME_CREATED</c> is the dump's only one and it lives on
+    /// the one class that derives, so <see cref="IsInherited"/> caught it before this ever saw
+    /// it. That is an accident of where it sits, not a decision, and a writer whose ability to
+    /// print the schema rests on an accident is one edit from throwing on a schema it was given.
+    /// </para>
+    /// </remarks>
     private static string CimType(WmiParamType type, string member) => type switch
     {
         WmiParamType.UInt8 or WmiParamType.UInt8Array => "uint8",
         WmiParamType.UInt16 => "uint16",
         WmiParamType.UInt32 => "uint32",
+        WmiParamType.UInt64 => "uint64",
         WmiParamType.Boolean => "boolean",
         WmiParamType.String => "string",
         _ => throw new NotSupportedException(

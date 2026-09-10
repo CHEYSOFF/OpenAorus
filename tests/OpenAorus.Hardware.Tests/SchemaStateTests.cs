@@ -11,8 +11,13 @@ public class SchemaStateTests
     private const string Expected = "aaaa";
     private const string Different = "bbbb";
 
+    /// <summary>A machine whose marker records the same schema its classes are binding.</summary>
     private static SchemaSnapshot Snapshot(bool classes, bool marker, string? fingerprint) =>
-        new(classes, classes, classes, classes, marker, fingerprint);
+        Snapshot(classes, marker, fingerprint, markerRecords: fingerprint);
+
+    /// <summary>A machine where what the marker wrote down and what the classes bind can differ.</summary>
+    private static SchemaSnapshot Snapshot(bool classes, bool marker, string? fingerprint, string? markerRecords) =>
+        new(classes, classes, classes, classes, marker, markerRecords, fingerprint);
 
     [Fact]
     public void A_machine_with_no_gigabyte_software_reads_as_absent()
@@ -88,7 +93,7 @@ public class SchemaStateTests
     [InlineData(true, true, true, false)]
     public void Some_classes_but_not_all_reads_as_partial(bool get, bool set, bool data, bool evt)
     {
-        var s = SchemaState.Classify(new SchemaSnapshot(get, set, data, evt, MarkerPresent: false, LiveFingerprint: null), Expected, false);
+        var s = SchemaState.Classify(new SchemaSnapshot(get, set, data, evt, MarkerPresent: false, MarkerFingerprint: null, LiveFingerprint: null), Expected, false);
 
         Assert.Equal(SchemaStatus.Partial, s);
         // A half-registered machine can be cleaned up and then registered again.
@@ -108,8 +113,90 @@ public class SchemaStateTests
         Assert.True(SchemaState.CanRemove(s));
     }
 
+    // ---- The registration of ours that a repository rebuild emptied ---------------------------
+
+    /// <summary>
+    /// The live fingerprint a machine renders when every method-bearing class is present and
+    /// declares nothing.
+    /// </summary>
+    /// <remarks>Computed here from the seam's own rendering rather than read off SchemaState, so
+    /// that the two agreeing is a fact and not a shared constant.</remarks>
+    private static string Emptied() => SchemaFingerprint.OfLive(
+        SchemaClasses.MethodBearing.ToDictionary(
+            name => name,
+            _ => (IReadOnlyDictionary<string, int>)new Dictionary<string, int>(StringComparer.Ordinal),
+            StringComparer.Ordinal));
+
     [Fact]
-    public void Writes_are_locked_in_four_of_the_five_states()
+    public void A_rebuilt_repository_that_emptied_our_own_registration_offers_remove_and_nothing_else()
+    {
+        // The owner's way out. All four class names still resolve, our marker beside them records
+        // the schema our install file writes, and the classes declare nothing - which is our own
+        // registration after a WMI repository rebuild and is not anything else. Refusing Remove
+        // here left an elevated mofcomp prompt as the only escape from a mess the app made.
+        var s = SchemaState.Classify(
+            Snapshot(classes: true, marker: true, fingerprint: Emptied(), markerRecords: Expected),
+            Expected, gatesRecorded: true);
+
+        Assert.Equal(SchemaStatus.OursEmptied, s);
+        Assert.True(SchemaState.CanRemove(s));
+
+        // Never install: the names are taken, the classes bind nothing, and undoing is the whole
+        // of the extra permission this state carries.
+        Assert.False(SchemaState.CanInstall(s));
+
+        // And a recorded gate pass counts for nothing against classes that declare no methods.
+        Assert.False(SchemaState.WritesUnlocked(s));
+    }
+
+    [Fact]
+    public void A_control_center_machine_is_never_read_as_a_registration_of_ours_that_emptied()
+    {
+        // Two independent facts have to hold, and a machine carrying somebody else's working
+        // schema breaks both. Neither a marker standing beside classes that declare methods nor
+        // emptied classes with no marker of ours is enough on its own.
+        var declaresMethods = SchemaState.Classify(
+            Snapshot(classes: true, marker: true, fingerprint: Different, markerRecords: Expected),
+            Expected, gatesRecorded: false);
+
+        var noMarkerOfOurs = SchemaState.Classify(
+            Snapshot(classes: true, marker: false, fingerprint: Emptied(), markerRecords: null),
+            Expected, gatesRecorded: false);
+
+        Assert.Equal(SchemaStatus.Foreign, declaresMethods);
+        Assert.Equal(SchemaStatus.Foreign, noMarkerOfOurs);
+        Assert.False(SchemaState.CanRemove(declaresMethods));
+        Assert.False(SchemaState.CanRemove(noMarkerOfOurs));
+    }
+
+    [Fact]
+    public void Emptied_classes_under_a_marker_recording_another_schema_stay_foreign()
+    {
+        // An older version of us, or a hand-compiled MOF, registered what is there. We have no
+        // account of what those names reached, so we do not delete them by Gigabyte's names.
+        var s = SchemaState.Classify(
+            Snapshot(classes: true, marker: true, fingerprint: Emptied(), markerRecords: Different),
+            Expected, gatesRecorded: false);
+
+        Assert.Equal(SchemaStatus.Foreign, s);
+        Assert.False(SchemaState.CanRemove(s));
+    }
+
+    [Fact]
+    public void Emptied_classes_under_a_marker_that_would_not_answer_stay_foreign()
+    {
+        // A marker that recorded nothing readable is not evidence. Null matches no fingerprint,
+        // which is what makes an unreadable marker withhold the permission rather than grant it.
+        var s = SchemaState.Classify(
+            Snapshot(classes: true, marker: true, fingerprint: Emptied(), markerRecords: null),
+            Expected, gatesRecorded: false);
+
+        Assert.Equal(SchemaStatus.Foreign, s);
+        Assert.False(SchemaState.CanRemove(s));
+    }
+
+    [Fact]
+    public void Writes_are_locked_in_every_state_but_one()
     {
         var unlocked = Enum.GetValues<SchemaStatus>().Where(SchemaState.WritesUnlocked).ToArray();
 
@@ -194,7 +281,7 @@ public class SchemaStateTests
         Assert.False(Snapshot(classes: false, marker: true, fingerprint: null).AllClassesPresent);
         Assert.False(Snapshot(classes: false, marker: true, fingerprint: null).AnyClassPresent);
 
-        var one = new SchemaSnapshot(false, false, false, true, MarkerPresent: false, LiveFingerprint: null);
+        var one = new SchemaSnapshot(false, false, false, true, MarkerPresent: false, MarkerFingerprint: null, LiveFingerprint: null);
         Assert.False(one.AllClassesPresent);
         Assert.True(one.AnyClassPresent);
     }

@@ -6,11 +6,13 @@ namespace OpenAorus.Hardware.Wmi.Schema;
 /// <summary>Reads class definitions out of a live WMI namespace.</summary>
 /// <remarks>
 /// <para>
-/// THIS READS DEFINITIONS, NOT INSTANCES. <c>ManagementClass.Get</c> fetches the class's own
-/// metadata out of the WMI repository; it does not enumerate an instance, and enumerating an
-/// instance of <c>GB_WMIACPI_Get</c> is what dispatches into the ACPI provider. This runs at
-/// startup, on a machine whose firmware interface is the thing being investigated, so it stays on
-/// the metadata side of that line.
+/// THIS READS NO GIGABYTE INSTANCE. <c>ManagementClass.Get</c> fetches the class's own metadata
+/// out of the WMI repository; it does not enumerate an instance, and enumerating an instance of
+/// <c>GB_WMIACPI_Get</c> is what dispatches into the ACPI provider. This runs at startup, on a
+/// machine whose firmware interface is the thing being investigated, so it stays on the metadata
+/// side of that line. The single exception is <see cref="ReadMarkerFingerprint"/>, which fetches
+/// an instance of <c>OpenAorus_SchemaMarker</c> - our own class, declared by our own install file,
+/// with no provider behind it. That read goes to the repository and nowhere near ACPI.
 /// </para>
 /// <para>
 /// A missing class and an unwell repository are separated here rather than downstream, because
@@ -22,6 +24,9 @@ namespace OpenAorus.Hardware.Wmi.Schema;
 public sealed class WmiClassSource : IWmiClassSource
 {
     private const string MethodIdQualifier = "WmiMethodId";
+
+    /// <summary>The property the marker instance carries the fingerprint in, as the MOF names it.</summary>
+    private const string MarkerFingerprintProperty = "Fingerprint";
 
     /// <summary>Reads from the namespace both MOF files declare.</summary>
     public WmiClassSource() : this(MofWriter.Namespace)
@@ -78,6 +83,35 @@ public sealed class WmiClassSource : IWmiClassSource
         catch (Exception ex)
         {
             return WmiClassReading.Unreadable($"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Never throws: a marker that will not answer reads as one that recorded nothing,
+    /// which matches no fingerprint and so can only withhold a permission, never grant one.</remarks>
+    public string? ReadMarkerFingerprint()
+    {
+        try
+        {
+            var scope = new ManagementScope(NamespacePath);
+            scope.Connect();
+
+            // Addressed by key rather than enumerated. The install file writes exactly one
+            // instance, and asking for that one by name cannot pick up a second that some other
+            // run left behind.
+            var path = new ManagementPath(
+                $"{MofWriter.MarkerClass}.Id=\"{MofWriter.MarkerInstanceId}\"");
+
+            using var marker = new ManagementObject(scope, path, null);
+            marker.Get();
+
+            return marker[MarkerFingerprintProperty] as string;
+        }
+        catch (Exception)
+        {
+            // Including the class not being there at all, which is the ordinary case on a machine
+            // we have never registered.
+            return null;
         }
     }
 
