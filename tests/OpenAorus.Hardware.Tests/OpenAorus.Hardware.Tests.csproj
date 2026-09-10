@@ -30,6 +30,14 @@
     <None Include="..\..\docs\research\ione-keymap-eng-*.txt" CopyToOutputDirectory="PreserveNewest" Link="keymaps\%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The recovered schema and the known-good reading are test data, for the same reason the
+       keymaps are: the generator is compared against the file it claims to come from, and the
+       gate is compared against the one reading we know was correct. -->
+  <ItemGroup>
+    <None Include="..\..\docs\research\gb-wmiacpi-methods-aorus-17g-kd.txt" CopyToOutputDirectory="PreserveNewest" Link="schema\%(Filename)%(Extension)" />
+    <None Include="..\..\docs\research\dump-aorus-17g-kd-known-good.txt" CopyToOutputDirectory="PreserveNewest" Link="schema\%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- The markup is test data too. XamlResourceTests reads it as plain XML - no WPF, no
        Application, no STA thread - because a StaticResource key typo compiles cleanly and
        only throws when the panel is first shown. -->
