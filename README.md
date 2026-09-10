@@ -5,8 +5,9 @@ keyboard-lighting features of Gigabyte Control Center on Gigabyte AORUS / AERO
 laptops. Think [G-Helper](https://github.com/seerge/g-helper), but for Gigabyte.
 
 **Status: pre-alpha, v0.3. Nothing here is verified on real hardware: not the fan
-control from v0.1, not the lighting added in v0.2, and not the Fn hotkeys added in
-v0.3. See [Verification status](#verification-status) below.**
+control from v0.1, not the lighting added in v0.2, not the Fn hotkeys added in
+v0.3, and not the WMI schema OpenAorus now registers for itself. See
+[Verification status](#verification-status) below.**
 
 ## Why
 
@@ -51,8 +52,10 @@ to any program at all, elevated or not.
 
 Lighting talks to the keyboard as a plain HID device, so **it needs no
 administrator rights and does not go through WMI at all**. That also means it
-does not need Gigabyte Control Center installed; the fan side still does, for
-the WMI schema (see [Install](#install)). The app as a whole still asks for
+does not need Gigabyte Control Center installed. Nor, now, does the fan side:
+what it needed GCC for was the WMI schema, and it can register its own (see
+[Registering the WMI interface yourself](#registering-the-wmi-interface-yourself)).
+The app as a whole still asks for
 elevation when it launches, because the fan and battery side cannot work
 without it. If GCC is running, its own lighting service can fight over the
 keyboard, which is what the v0.1 takeover switch is for.
@@ -126,6 +129,56 @@ reading it, and reports from any model are welcome.
 Still missing: per-app profiles, power limits, and the chassis light bar and
 logo LED.
 
+## Registering the WMI interface yourself
+
+OpenAorus no longer needs Gigabyte Control Center installed to reach the fans,
+sensors or battery. It used to, and not because it called GCC: everything on that
+side goes through a set of `GB_WMIACPI_*` WMI classes, and GCC's installer was
+the only thing on the machine declaring them, in a file called `acpimof.dll`.
+Uninstall Control Center and the classes leave with it. The firmware interface
+underneath is untouched, but nothing is left describing it, so every fan and
+battery write fails at its first step with a "not found" that names a method when
+the whole class is gone.
+
+Settings now has a **Gigabyte WMI interface** card with a **Register the
+interface** button that declares those classes itself. It needs administrator
+rights, which the app already asks for at startup, and it is reversible: a
+**Remove** button takes them back out again.
+
+The schema it registers is **generated rather than written**. It is printed from
+a schema dump recovered from a real AORUS 17G KD while Control Center was still
+installed, it is checked into the repository so the four GUIDs and the 143 method
+ids can be read before they reach anything, and the test suite reprints it on
+every run and fails if it has drifted from the research file by so much as a
+space.
+
+**Registering does not switch fan control on.** Writes stay locked until two
+checks pass, and the card offers a **Check it works** button that runs them: a
+read check that calls every recovered `Get` method and compares the answers
+against a known-good reading from this same machine, and a single-value round
+trip that reads the charge limit, writes the same value back and reads it again.
+The reason for both is that a MOF maps names to numbers. A wrong method id means
+the app calls a different firmware method than the one it believes it is calling,
+with an argument meant for something else, on the controller that governs cooling
+and charging. The round trip is the only write the app makes before it has earned
+the right to write, it changes nothing by construction, and it refuses to run at
+all unless the value it read is inside the 60-100 % band this app ever writes as
+a charge limit.
+
+OpenAorus never registers over an existing schema and never removes one it did
+not install, so it is safe to have Control Center installed alongside. On such a
+machine Register and Remove are both withheld and **Check it works** is the only
+button offered, which is also the only one such an owner needs: a passing run
+unlocks writes without OpenAorus claiming ownership of anything.
+
+**None of this has been confirmed on hardware.** The MOF has never been compiled,
+the classes have never been created, and neither check has ever seen a firmware
+answer. The schema was recovered from an AORUS 17G KD, so the ids are that
+model's; other models will have other ids, and the read check will fail on them
+by design. A `--dump` from a machine that still has Control Center installed is
+the thing to send. Section 8 of [`VERIFY.md`](VERIFY.md) is the checklist that
+would settle any of it.
+
 ## Verification status
 
 v0.1 was built on a machine that cannot elevate and has no Gigabyte hardware
@@ -147,6 +200,15 @@ do nothing without a single test noticing, which is why section 7 of
 [`VERIFY.md`](VERIFY.md) starts by reading the diagnostics file rather than by
 pressing a key.
 
+The WMI schema registration is unverified in a different way from the rest. The
+gate logic and the MOF generator are tested against the recovered dump and over
+fakes, but whether a MOF printed from a decompiled schema binds to the same ACPI
+blocks Gigabyte's did is a hardware question that no test can reach: the MOF has
+never been compiled and the classes have never been created. Section 8 of
+[`VERIFY.md`](VERIFY.md) is written to be run on a machine with no Gigabyte
+software on it at all, because that is the state in which a clean registration
+can be watched without a foreign schema confusing the result.
+
 [`VERIFY.md`](VERIFY.md) lists every check that still needs to happen on
 actual hardware before this should be considered trustworthy. If you run any
 of those checks, please report back — a passing or failing checklist is
@@ -158,11 +220,12 @@ Download `OpenAorus-vX.Y.Z-win-x64.exe` from Releases (or the smaller
 `-framework-dependent` build if you have the .NET 8 Desktop Runtime). Run it;
 accept the UAC prompt. In ⚙ Settings turn on **Start with Windows** to get a
 silent elevated tray start, and **Take over from Gigabyte Control Center** so
-GCC stops fighting your fan mode. Keep GCC installed: it provides the WMI schema
-(`acpimof.dll`) that OpenAorus talks to for fans, sensors and the battery.
-Removing that dependency is a future item. The lighting does not depend on it;
-that side is plain HID and would work on a machine with GCC uninstalled, which
-the fan side would not.
+GCC stops fighting your fan mode. GCC no longer has to stay installed: it used
+to be the only thing providing the WMI schema (`acpimof.dll`) that the fan,
+sensor and battery side talks to, and OpenAorus can now register its own copy
+from the same Settings page, with writes locked until two hardware checks pass.
+See [Registering the WMI interface yourself](#registering-the-wmi-interface-yourself).
+The lighting never depended on it either way; that side is plain HID.
 
 Command-line flags: `--tray` starts hidden in the tray (used by the autostart
 task), `--show` forces the window visible even together with `--tray`,
@@ -305,8 +368,13 @@ watchdog, the notices it writes and `--dump` all use the raw samples.
 - [v0.1 design](docs/superpowers/specs/2026-09-06-openaorus-v0.1-design.md),
   [v0.2 keyboard RGB design](docs/superpowers/specs/2026-09-06-openaorus-v0.2-rgb-design.md)
   and [v0.3 Fn hotkeys and the OSD problem](docs/superpowers/specs/2026-09-06-openaorus-v0.3-fn-osd-design.md)
+- [Registering the WMI schema ourselves](docs/superpowers/specs/2026-09-08-openaorus-wmi-schema-design.md),
+  the design behind the section above
 - [Research notes](docs/research/2026-09-05-research-notes.md) and the full
-  [WMI method table](docs/research/gb-wmiacpi-methods-aorus-17g-kd.txt)
+  [WMI method table](docs/research/gb-wmiacpi-methods-aorus-17g-kd.txt) the
+  schema is generated from, plus the
+  [known-good reading](docs/research/dump-aorus-17g-kd-known-good.txt) the read
+  check compares a fresh registration against
 - [Fn hotkey and OSD research](docs/research/fn-hotkey-signals.md), with the two
   event channels and the three questions it could not answer
 - [Keyboard protocol notes](docs/research/ione-keyboard-protocol.md), with the

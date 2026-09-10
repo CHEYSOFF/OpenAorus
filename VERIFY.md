@@ -686,6 +686,260 @@ worth running.
 5. **7.5**, four presses of the fan key while watching which code the dump records. The
    one observation that could change a design decision rather than a constant.
 
+## 8. Registering the WMI schema ourselves
+
+Nothing in this section has ever been run. The MOF has never been compiled, the classes have
+never been created, and neither gate has ever seen a firmware answer. Everything in the release
+is a test of a decision, and every one of those decisions sits downstream of one unverified
+fact: that a MOF printed from a decompiled schema dump binds to the same ACPI blocks
+Gigabyte's did. If it does not, this section is what says so, and it is the only thing that
+would.
+
+**This machine is the right one to find out on, and it will not stay that way.** Gigabyte
+Control Center is uninstalled, so nothing is left registering the `GB_WMIACPI_*` classes, and
+the firmware interface underneath is untouched: `ACPI\PNP0C14\DCK` is present and healthy. That
+is the exact state this feature exists for, the only state in which the app's `Absent`
+classification is reachable at all, and the only one in which a clean registration can be
+watched with no foreign schema in the way. It is also a state that is normally hard to arrange -
+it took an uninstall that broke the machine to produce it - and it ends the moment Control
+Center goes back on to compare. Do 8.1 to 8.6 before reinstalling anything.
+
+Work in order. 8.3 partitions everything below it.
+
+### 8.1 What the machine says before anything is registered
+
+- [ ] Start OpenAorus. The banner must say, in one message, that the Gigabyte WMI interface is
+      not registered on this machine, that fan and battery controls are unavailable because of
+      it, that Settings can register a copy, that it needs administrator rights and that it can
+      be undone. What it must **not** say is `step 1/5 setCurrentFanStep failed: not found`,
+      which names a method when the whole class is gone
+- [ ] **Then watch that banner for a few seconds, because it may not survive.** A notice of that
+      kind is cleared by the first sensor poll that reports, and on a machine with no schema
+      every sensor read fails - so the message above can be replaced within about a second by the
+      read failures themselves, `getCpuTemp: ... Not found` and the rest. If that happens, record
+      it: it is the symptom-level message this release exists to replace arriving by another
+      route, and no test can see it
+- [ ] The fan mode strip, the curve editor and the battery card are all disabled
+- [ ] **The temperatures and the fan speeds do not update either, and that is correct.** Every
+      sensor read goes through `GB_WMIACPI_Get`, so with no such class there is nothing to read
+      and the numbers sit at zero. Only the keyboard lighting is unaffected: it is plain HID and
+      never touches WMI at all
+- [ ] Settings shows the **Gigabyte WMI interface** card, and the card still works, even though
+      everything above it is greyed out. Exactly one button is offered on this machine:
+      **Register the interface**
+- [ ] Run `OpenAorus.exe --apply` from an elevated prompt. It must exit non-zero, and what it
+      reports must be the registration message - not a step number from inside a five-step write
+      that nobody was there to read
+
+### 8.2 Registering
+
+The app runs `mofcomp -check` on the install file itself before compiling anything, and will not
+compile a file that does not parse. You can run the same check by hand first, against the copy
+checked into the repository:
+
+```
+%SystemRoot%\System32\wbem\mofcomp.exe -check "src\OpenAorus.Hardware\Wmi\Schema\GB_WMIACPI.mof"
+```
+
+**What that check does not do is verify a base class.** `-check` parses the file; it opens no
+repository and resolves no superclass. A MOF naming a class that exists nowhere still parses and
+still exits 0, which was demonstrated by substituting a nonsense name for `WMIEvent` and
+watching the check report success. So a clean `-check` says the file is syntactically a MOF, and
+says nothing whatsoever about `class GB_WMIACPI_Event : WMIEvent`.
+
+That one was settled a different way, and it does not need re-checking here.
+`Get-CimClass -Namespace root\WMI -ClassName WMIEvent` on this machine returns a real class whose
+parent is `__ExtrinsicEvent` and whose properties are exactly `SECURITY_DESCRIPTOR` and
+`TIME_CREATED` - the two the recovered dump showed carrying empty qualifier lists, which is why
+the writer emits them as inherited rather than declaring them. `MofWriter.EventBaseClass` is
+still one constant if some other machine ever rejects it.
+
+- [ ] Press **Register the interface** in Settings and accept the UAC prompt if one appears. The
+      app is already elevated by then, because it relaunches itself under UAC at startup; the
+      card refuses outright and changes nothing if it is not
+- [ ] It reports success, and the card now says OpenAorus registered the interface and that
+      writes stay disabled until the read check and the charge-limit round trip have both passed
+- [ ] Fan control is **still disabled**. That is correct: registering is not proving
+- [ ] Check the classes exist:
+      `Get-CimClass -Namespace root\WMI -ClassName GB_WMIACPI_Get`, and the same for `_Set`,
+      `_Data` and `_Event`
+- [ ] Check the registration is recorded as ours:
+      `Get-CimInstance -Namespace root\WMI -ClassName OpenAorus_SchemaMarker` returns one
+      instance with `Id = OpenAorus` and a 64-character `Fingerprint`
+- [ ] If it failed, check that **nothing was left behind** - all four classes and the marker
+      absent. The installer runs its removal file on every failure path for exactly this reason,
+      and a half-registered machine is the outcome this design most wants to avoid. If one
+      happened anyway, record the card's message verbatim: it quotes mofcomp's own output, which
+      names the line and the qualifier and nothing else can
+- [ ] The file the app actually compiled is written to
+      `%LocalAppData%\OpenAorus\schema\OpenAorus-GB_WMIACPI.mof` and deleted again when the
+      operation ends, so do not expect to find it afterwards. The checked-in copy is the one to
+      read
+
+### 8.3 Gate A - the reads
+
+- [ ] Press **Check it works**. Gate A runs first, and its summary line says how many methods it
+      compared
+- [ ] Export a diagnostics dump from the **Diagnostics** button in the window footer and read it
+      against `docs/research/dump-aorus-17g-kd-known-good.txt` **before** looking at the verdict,
+      so that the verdict is checked against the evidence rather than believed
+- [ ] The comparison that matters most is **which methods answered and which said
+      `Invalid object`**. The known-good reading answers 42 of its 72 `Get` methods and refuses
+      the other 30, and the firmware decides which to refuse by method id, so reproducing that
+      split is the evidence. **A registration that made everything answer would be more
+      suspicious than one that reproduced the 30 failures.** The gate allows about a tenth of
+      them to move, because a newer BIOS legitimately shifts a few
+- [ ] `getCpuTemp` and `getGpuTemp1` must be plausible temperatures, between 20 and 110 °C. The
+      known-good reading has 90 and 53. A 0 or a 255 is a duty or a status byte being read as °C
+- [ ] The fan table must read back a rising temperature series. If a custom curve is applied it
+      stops at a `(0,0)` terminator with stale values in the slots after it, and the gate judges
+      only the part before the terminator - a gate demanding fifteen ordered slots would fail
+      every machine whose only fault is that its owner uses a curve
+- [ ] `GetChargeStop` must answer something between 0 and 100. Gate B is about to write through
+      that method, and finding out here that it is not there is cheaper
+- [ ] Three methods are evidence of nothing and are skipped by every check: `GetPEGorSG`,
+      `GetFanPWMStatus` and `GetFanAdjustStatus` answer with whatever the previous call left in
+      the buffer. All three read 115 in the known-good dump and all three read 229 in a later one
+      taken at duty 229 - they tracked the duty. **They are unimplemented, and their values must
+      never be trusted**, here or anywhere else
+- [ ] **Know what Gate A cannot catch before reading a pass as proof.** It sees *whether* a
+      method answered, not what it said. A swap between two methods of the same shape survives it
+      untouched: `getCpuTemp` against `getGpuTemp1` (90 and 53 are both plausible either way
+      round), `getRpm1` against `getRpm2`, any pair of boolean-ish methods. If the two
+      temperatures in the window look swapped against Task Manager, that is what has happened,
+      and Gate A will have passed
+- [ ] **If Gate A fails, do not press anything else.** Export the dump, press Remove, and record
+      both. A failing Gate A on a fresh registration means the ids are wrong. Gate B does not run
+      at all after one, and that is deliberate: its write is defensible only while the read it
+      echoes is believable
+- [ ] A Gate A where **nothing** answered is worth naming separately: that is the classes
+      registering cleanly and binding nothing. It is indistinguishable from firmware that is not
+      responding, which is why the dump matters more here than the verdict does
+- [ ] The known-good reading is from an AORUS 17G KD, so **Gate A on another model will fail**.
+      That is a stated limitation and not a defect: those machines have other ids, and a dump
+      from one is the thing to send
+
+### 8.4 Gate B - the one write
+
+- [ ] Note the charge limit the battery card shows before pressing anything
+- [ ] Gate B reads `GetChargeStop`, writes that same value straight back through `SetChargeStop`,
+      and reads it again. It must come back unchanged, and the charge limit in the card must be
+      exactly what it was
+- [ ] **It refuses to write at all unless the value it read is between 60 and 100 %**, the only
+      band this app ever writes as a charge limit. That refusal is the whole safety argument and
+      it is worth understanding rather than skipping: `GetChargeStop` and `GetMaxCharge` both
+      answer a legal charge percentage, so a registration with those two the wrong way round
+      passes Gate A untouched, and echoing that reading would write something that is not the
+      charge limit at all. A 0 is a laptop that does not charge, and the parameter is a `uint8`,
+      so a reading of 4096 would arrive as 0 as well
+- [ ] If it refuses, it reports that the test **could not be run** rather than that the
+      registration is bad, because the mapping might be perfect and the battery reading merely
+      odd. Record the value it read. Writes stay locked either way
+- [ ] **What a passing Gate B does not prove.** One write id, not the class's whole mapping.
+      `GB_WMIACPI_Get` and `GB_WMIACPI_Set` have separate id spaces - id 88 is
+      `CheckHeavyLoading` in one and `SetSuperQuiet` in the other - and Gate B tests exactly one
+      point in one of them. Every fan write remains unproven by the gates themselves and rests on
+      the fingerprint matching the schema recovered from this machine
+- [ ] Nothing is restored afterwards, and that is deliberate rather than an omission: the value
+      written is the value that was already there, and a restoring write would be a second write
+      this feature has not earned the right to make
+- [ ] After both gates pass, the fan strip, the curve editor and the battery card come alive
+      **without restarting the app**
+- [ ] The verdict is not in the diagnostics dump - that file carries the method readings and the
+      fan table and nothing about the schema. The verdict is the message on the Settings card,
+      and it is written into `%LocalAppData%\OpenAorus\settings.json` under `Schema` as
+      `GateSummary`, beside `GatesPassed`, `Fingerprint` and `When`. Copy it out of there
+
+### 8.5 Fan control working afterwards, which is the point of all of it
+
+- [ ] Set a fan mode. This is the first moment anything in this release has driven the hardware
+      through a schema OpenAorus registered
+- [ ] Compare the duty read-back against what the mode should be, as section 2 asks
+- [ ] Apply a custom curve and run `--dump`. The fan table must read back what the editor showed,
+      with each duty equal to `round(percent × 229 / 100)`
+- [ ] Tick the charge limit at 80 % and confirm `--dump` shows `GetChargePolicy: Data=4` and
+      `GetChargeStop: Data=80`. That is the `Set` class being written for real rather than
+      round-tripped against itself
+- [ ] Sections 2, 3 and 3.1 are all worth working again from the top once this passes. None of
+      them has ever run through a schema this app registered, and the safety guards in 3.1 are
+      the half of the app whose failure mode is a hot machine
+
+### 8.6 Removal puts the machine back
+
+- [ ] With the schema registered and gated, press **Remove**
+- [ ] All four classes and the marker are gone: `Get-CimClass` errors on each of the five names
+- [ ] Fan control is disabled again and the banner says why
+- [ ] The recorded pass went with it. Press **Register the interface** again: it works, and
+      **Check it works** has to be run again. A removed schema is not a remembered pass
+- [ ] Press **Remove** twice in a row. The second press must report that there was nothing to
+      remove, and must not be an error the owner has to interpret
+- [ ] **It must also work from a half-finished install**, which is the state the app calls
+      partial: some of the classes present, or the marker present with classes missing. The
+      removal file deletes by name with `NOFAIL`, so it is idempotent, and both buttons are
+      offered on such a machine - Register sweeps the leftovers first and then compiles. To make
+      that state on purpose, delete one class by hand from an elevated prompt with
+      `([wmiclass]"root\WMI:GB_WMIACPI_Data").Delete()` and restart the app. If that form is
+      refused, any means of deleting a single class will do; what is being checked is the app's
+      reading of the machine afterwards, not the way it got there
+
+### 8.7 Living beside Control Center
+
+Do this last. Reinstalling Control Center ends the state everything above depends on.
+
+- [ ] Reinstall Gigabyte Control Center. Start OpenAorus
+- [ ] The card must report that the classes are registered by something else. **Register the
+      interface** is withheld: two schemas over one GUID is a state nobody has tested, and
+      `-class:createonly` would refuse anyway
+- [ ] **Remove is withheld too, and this is the one that matters.** Our removal file deletes by
+      class name and the names are Gigabyte's, so pressing Remove here would take Control
+      Center's own registration away and break software OpenAorus did not install. The refusal is
+      re-decided at the moment of the click rather than trusted from when the window opened
+- [ ] **Check it works** *is* offered, and on such a machine it is the only button and the only
+      one needed. Run it. A passing run unlocks fan and battery writes **without claiming
+      ownership of anything**: the gates prove a mapping, ownership decides what may be installed
+      and removed, and neither answer decides the other
+- [ ] That is the ordinary state of a laptop with Control Center on it, and the state most owners
+      will be in. Refusing writes there would be strictly worse than the behaviour this feature
+      replaced, which wrote to Gigabyte's schema with no verification at all
+- [ ] Whether the run passes depends on whether Control Center's schema maps the same ids as the
+      one recovered from this machine. It should, because that is where the dump came from. If it
+      does not, record which methods moved - the gate names them all
+- [ ] Uninstall GCC again. OpenAorus must go back to reporting the interface as missing and
+      offering **Register the interface**, and any recorded pass must stop counting, because the
+      schema it was earned against is gone
+
+### 8.8 The record survives a reboot, and stops counting when it should not
+
+- [ ] With both gates passed, reboot. Fan control works immediately, with no gate run and no
+      prompt. That is the point of recording it at all
+- [ ] The record is only as good as the schema it was earned against. It carries a fingerprint
+      over every method name and id in `GB_WMIACPI_Get` and `GB_WMIACPI_Set`, recomputed from the
+      live classes at every start, and a pass whose fingerprint no longer matches unlocks nothing
+- [ ] Delete one class by hand, as in 8.6, and restart the app. It must notice, lock writes and
+      say what state the registration is in
+- [ ] Edit `settings.json` by hand to set `"GatesPassed": true` inside `"Schema"` with no
+      `"Fingerprint"` beside it, then start the app. It must clear the pass, keep the rest of the
+      file, and say in the banner that the saved record of the hardware checks recorded a pass it
+      could not have written. The same for a `"When"` dated in the future, or missing
+- [ ] `#pragma autorecover` is deliberately not used, so a `winmgmt /resetrepository`, or a
+      Windows update that rebuilds the WMI repository, should drop the classes. If it does, the
+      app must say so at the next start and offer the button again. If it instead leaves the four
+      classes present and declaring nothing, that is the state the app calls emptied: the marker
+      still records our schema, writes stay locked because those names now reach nothing, and
+      **Remove** is offered so the owner can get out of it without an elevated `mofcomp` prompt
+
+### 8.9 The questions nobody could answer without this machine
+
+- [ ] Does a MOF printed from the recovered dump bind to the firmware at all, or does it register
+      cleanly and answer `Invalid object` to everything? (8.3, where a Gate A with *nothing*
+      answering is exactly this)
+- [ ] Does `SetChargeStop` on our registration reach the same firmware slot `GetChargeStop`
+      reads? (8.4 - that is the entire content of Gate B)
+- [ ] Does any **fan** write reach the method it names? Nothing in this release checks that.
+      8.5 is the closest anything comes, and it is an eye on a duty read-back
+- [ ] Does a WMI repository rebuild drop the classes or empty them? (8.8)
+- [ ] Does the startup banner survive the first sensor poll on a machine with no schema? (8.1)
+
 ## Assumptions this checklist is really testing
 
 Everything below was reconstructed from Gigabyte's software, or inferred from the shape
@@ -749,6 +1003,41 @@ symptom shows up above.
   measured duty still under 80 % means the controller is not doing what its own table says.
   If this machine's thermal management works, the watchdog should simply never fire on its
   own, which section 3.1 asks you to confirm by making it fire on purpose.
+- **That a MOF printed from a decompiled schema dump binds to the same ACPI blocks
+  Gigabyte's did.** The whole of section 8 rests on this and nothing has tested it. The four
+  GUIDs, the 143 method ids and the 249 parameter ids all came out of one machine's WMI
+  repository while Control Center was still installed, which is strong provenance - it is the
+  mapping that demonstrably worked on this chassis - but it was read out of a registry rather
+  than out of the firmware, and nothing has yet compiled it back in. Section 8.3.
+- **That the 30 methods answering `Invalid object` are a property of the method ids and not
+  of the moment.** The research file says they are methods this model does not implement, and
+  Gate A's strongest check is built entirely on it. If they turn out to move with machine
+  state, that check becomes noise and the gate falls back to four much weaker ones.
+  Section 8.3.
+- **That `GB_WMIACPI_Event` derives from `WMIEvent`.** This one is no longer a guess: the
+  class exists in `root\WMI` on this machine, its parent is `__ExtrinsicEvent`, and its
+  properties are exactly the two the recovered dump listed with empty qualifier lists. What
+  is still assumed is that emitting it as a base and declaring only the members that carry
+  qualifiers produces a class `mofcomp` accepts. Section 8.2, and note there that `-check`
+  cannot confirm a base class either way.
+- **That omitting `Locale(1033)` changes nothing.** The recovered classes carry
+  `Locale=MS\0x409` and ours do not, because emitting a localisation qualifier without the
+  amended namespace it points at would declare a translation that does not exist. It should
+  not be part of what binds. Section 8.3 would show it if it were.
+- **That writing a charge stop back to itself is harmless.** It is a no-op by construction,
+  and the gate refuses to run at all unless the value read is inside 60-100 %, because
+  writing back a 0 that was really a failed read is a laptop that does not charge. Section 8.4.
+- **That `-class:createonly` really does refuse rather than merge.** It is the tool-enforced
+  half of "never register over a working schema", and the half that closes the gap between
+  the app's own look at the machine and the compile that follows it. Section 8.7.
+- **That not using `#pragma autorecover` is the right trade.** It keeps the registration
+  removable, at the cost of not surviving a WMI repository rebuild. The app detects the loss
+  and offers the button again, which is one extra click rather than a machine-wide replay
+  list that Remove cannot cleanly undo. Section 8.8.
+- **That the fingerprint is enough to notice a schema changing underneath a recorded pass.**
+  It covers every method name and id in the two method-bearing classes and nothing else. A
+  change leaving all 143 mappings identical would not be noticed, and would not matter,
+  because the mapping is the thing the gates proved. Section 8.8.
 - **That five seconds to engage and fifteen to release are the right runs.** Also reasoned.
   Five seconds is meant to be short enough that a genuinely uncooled machine is not left
   alone and long enough that a boost is not mistaken for one; fifteen is meant to be long
